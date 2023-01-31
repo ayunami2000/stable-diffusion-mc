@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@replit/node-fetch": "^3.1.0",
+    "discord.js": "^14.7.1",
+    "image-dither": "^1.0.1",
+    "minecraft-protocol": "^1.40.3",
+    "sharp": "^0.31.3",
+    "uuid": "^9.0.0"
+  }
+}
