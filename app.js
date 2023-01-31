@@ -124,7 +124,7 @@ function updateSongs() {
 	for (const s of songList) {
 		const sl = s.toLowerCase();
 		if (!(sl.endsWith(".nbs") || sl.endsWith(".mid") || sl.endsWith(".midi"))) continue;
-		const b = sl.slice(0, s.lastIndexOf(".")).replace(/_/g, " ");
+		const b = sl.slice(0, s.lastIndexOf(".")).replace(/_/g, " ").replace(/ +/g, " ");
 		let k = b;
 		let i = 1;
 		while (k in songs) {
@@ -159,6 +159,30 @@ String.prototype.toProperCase = function () {
 
 function playSong(song) {
 	song = song.toLowerCase();
+	if (!(song in songs)) {
+		for (const s in songs) {
+			if (s.startsWith(song)) {
+				song = s;
+				break;
+			}
+		}
+	}
+	if (!(song in songs)) {
+		for (const s in songs) {
+			if (s.endsWith(song)) {
+				song = s;
+				break;
+			}
+		}
+	}
+	if (!(song in songs)) {
+		for (const s in songs) {
+			if (s.includes(song)) {
+				song = s;
+				break;
+			}
+		}
+	}
 	if (song in songs) {
 		stopSong();
 		currSong = song.toProperCase();
@@ -178,6 +202,7 @@ function playSong(song) {
 				if (tick >= nbs.length) {
 					clearInterval(nbsInterval);
 					nbsInterval = -1;
+					songEnded();
 				}
 			}, 0);
 		} else {
@@ -185,6 +210,14 @@ function playSong(song) {
 			midiPlayer.play();
 		}
 	}
+}
+
+midiPlayer.on("endOfFile", () => {
+	songEnded();
+});
+
+function songEnded() {
+	broadcast("\u00A79Song has ended!");
 }
 
 function stopSong() {
@@ -198,7 +231,8 @@ function stopSong() {
 	currSong = null;
 }
 
-playSong("dream run");
+// playSong("dream run - trance music for racing game");
+playSong("vgm rem");
 
 const colors = require("./colors.json");
 const colors2 = [];
@@ -265,6 +299,10 @@ function writeJpegFrame(res, img) {
 }
 
 require("http").createServer(async (req, res) => {
+	if (req.url.startsWith("/songs")) {
+		res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+		return res.end(Object.keys(songs).join("\n"));
+	}
 	if (lastImg == null || lastImgJpeg == null) return res.end();
 	if (req.url.startsWith("/mjpeg")) {
 		res.writeHead(200, { "Cache-Control": "no-cache", "Connection": "close", "Content-Type": "multipart/x-mixed-replace; boundary=" + mjpegBoundary, "Pragma": "no-cache" });
@@ -524,13 +562,13 @@ cmds.help = cmds.h = cmds["?"] = {
 cmds.songs = cmds.song = cmds.s = {
 	main: "songs",
 	desc: "Manage songs.",
-	usage: "[song|skip]",
+	usage: "[song|stop]",
 	run: async function(args, client) {
 		if (args.length > 0) {
 			const songName = args.join(" ");
-			if (songName.toLowerCase() == "skip" || songName.toLowerCase() == "s") {
+			if (songName.toLowerCase() == "stop" || songName.toLowerCase() == "s") {
 				stopSong();
-				broadcast("\u00A79Song has been skipped!")
+				broadcast("\u00A79Song has been stopped!")
 			} else {
 				playSong(songName);
 				if (currSong != null) {
@@ -540,7 +578,7 @@ cmds.songs = cmds.song = cmds.s = {
 				}
 			}
 		} else {
-			sendMessage(client, "\u00A79Songs: \u00A73" + Object.keys(songs).join("\u00A79,\u00A73 ").toProperCase());
+			sendMessage(client, "\u00A79Songs: \u00A73" + Object.keys(songs).join("\u00A79,\u00A73 ").toProperCase() + "\n\u00A79Songs can also be viewed online at the path \u00A73/songs");
 		}
 	}
 };
