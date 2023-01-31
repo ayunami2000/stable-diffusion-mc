@@ -1,24 +1,20 @@
+const readline = require("readline");
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
 const oldLog = console.log;
 const oldErr = console.error;
 const oldWarn = console.warn;
-console.log = function(...a) {
-	process.stdout.clearLine();
-	process.stdout.cursorTo(0);
-	oldLog(...a);
-	process.stdout.write("> ");
-};
-console.error = function(...a) {
-	process.stdout.clearLine();
-	process.stdout.cursorTo(0);
-	oldErr(...a);
-	process.stdout.write("> ");
-};
-console.warn = function(...a) {
-	process.stdout.clearLine();
-	process.stdout.cursorTo(0);
-	oldWarn(...a);
-	process.stdout.write("> ");
-};
+function consoleBase(log) {
+	return function(...a) {
+		process.stdout.clearLine();
+		process.stdout.cursorTo(0);
+		log(...a);
+		process.stdout.write("> " + rl.line);
+	};
+}
+console.log = consoleBase(oldLog);
+console.error = consoleBase(oldErr);
+console.warn = consoleBase(oldWarn);
 
 const auth = require("./auth.json");
 const hh = {
@@ -31,7 +27,6 @@ if (auth.length > 1) {
 	}
 }
 const hhh = auth.length > 0 ? auth[0] : "http://localhost:9000";
-const token = require("./token.json");
 
 const onlyDitherFinal = false;
 
@@ -41,8 +36,16 @@ const discordEnabled = false;
 
 const blacklist = [];
 
+const defaultClientPrefs = {
+	progressSound: true,
+	finalSound: true,
+	music: true
+};
+const clientPrefs = {};
+
 let channel;
 if (discordEnabled) {
+	const token = require("./token.json");
 	const { Client } = require("discord.js");
 	const dClient = new Client({ intents: [] });
 	dClient.on("ready", () => {
@@ -54,10 +57,149 @@ if (discordEnabled) {
 	dClient.login(token[0]);
 }
 
-const readline = require("readline");
 const mc = require("minecraft-protocol");
 const fetch = require("@replit/node-fetch");
 const sharp = require("sharp");
+const fs = require("fs");
+const NBS = require("@encode42/nbs.js");
+const MidiPlayer = require("midi-player-js");
+const {
+	Instrument,
+	InstrumentIds,
+	instrumentMap,
+	percussionMap,
+	nbsToInstr
+} = require("./musicMaps.js");
+function getMidiInstrumentNote(midiInstrument, midiPitch, midiVolume) {
+	if (!(midiInstrument in instrumentMap)) return;
+	let instrument = null;
+	const instrumentList = instrumentMap[midiInstrument];
+	for (const candidateInstrumentName of instrumentList) {
+		const candidateInstrumentOffset = Instrument[candidateInstrumentName];
+		if (midiPitch >= candidateInstrumentOffset && midiPitch <= candidateInstrumentOffset + 24) {
+			instrument = candidateInstrumentName;
+			break;
+		}
+	}
+
+	if (instrument == null) return;
+
+	const pitch = midiPitch - Instrument[instrument];
+	const noteId = pitch + InstrumentIds.indexOf(instrument) * 25;
+	const volume = midiVolume / 127.0;
+
+	sendNote(noteId, volume);
+}
+function getMidiPercussionNote(midiPitch, midiVolume) {
+	if (midiPitch in percussionMap) {
+		const noteId = percussionMap[midiPitch];
+		const volume = midiVolume / 127.0;
+
+		sendNote(noteId, volume);
+	}
+}
+let instrumentIds = {};
+const midiPlayer = new MidiPlayer.Player(function(event) {
+	const eventName = event.name.toLowerCase();
+	if(eventName == "program change") {
+		instrumentIds[event.track] = event.value;
+	} else if (eventName == "note on") {
+		const midiPitch = event.noteNumber;
+		const midiVolume = event.velocity;
+		if (event.track == 9) {
+			getMidiPercussionNote(midiPitch, midiVolume);
+		} else {
+			const midiInstrument = event.track in instrumentIds ? instrumentIds[event.track] : 0;
+			getMidiInstrumentNote(midiInstrument, midiPitch, midiVolume);
+		}
+	}
+});
+
+const songs = {};
+function updateSongs() {
+	for (const s in songs) {
+		delete songs[s];
+	}
+	const songList = fs.readdirSync("songs/");
+	for (const s of songList) {
+		const sl = s.toLowerCase();
+		if (!(sl.endsWith(".nbs") || sl.endsWith(".mid") || sl.endsWith(".midi"))) continue;
+		const b = sl.slice(0, s.lastIndexOf(".")).replace(/_/g, " ");
+		let k = b;
+		let i = 1;
+		while (k in songs) {
+			k = b + " " + i++;
+		}
+		songs[k] = s;
+	}
+}
+updateSongs();
+
+function playNotes(nbs, tick) {
+	for (const layer of nbs.layers) {
+		const layerVolume = layer.volume / 100;
+		const note = layer.notes[tick];
+		if (note && note.instrument < nbs.instruments.loaded.length) {
+			if (note.key >= 33 && note.key <= 57) {
+				sendNote((note.key - 33) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100);
+			}
+		}
+	}
+}
+
+let nbsInterval = -1;
+let currSong = null;
+
+// https://stackoverflow.com/a/5574446/6917520
+String.prototype.toProperCase = function () {
+	return this.replace(/\w\S*/g, function(txt) {
+		return txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase();
+	});
+};
+
+function playSong(song) {
+	song = song.toLowerCase();
+	if (song in songs) {
+		stopSong();
+		currSong = song.toProperCase();
+		song = songs[song];
+		if (song.toLowerCase().endsWith(".nbs")) {
+			const nbs = NBS.fromArrayBuffer(new Uint8Array(fs.readFileSync("songs/" + song)).buffer);
+			let tick = -1;
+			const startTime = Date.now();
+			nbsInterval = setInterval(() => {
+				const songTime = Date.now() - startTime;
+				const lastTick = tick;
+				tick = Math.round(songTime * nbs.tempo / 1000);
+				if (tick == lastTick) return;
+				for (let t = lastTick + 1; t <= tick; t++) {
+					setTimeout(() => playNotes(nbs, t), 0);
+				}
+				if (tick >= nbs.length) {
+					clearInterval(nbsInterval);
+					nbsInterval = -1;
+				}
+			}, 0);
+		} else {
+			midiPlayer.loadFile("songs/" + song);
+			midiPlayer.play();
+		}
+	}
+}
+
+function stopSong() {
+	if (nbsInterval != -1) {
+		clearInterval(nbsInterval);
+		nbsInterval = -1;
+	} else {
+		midiPlayer.stop();
+		instrumentIds = {};
+	}
+	currSong = null;
+}
+
+playSong("dream run");
+
 const colors = require("./colors.json");
 const colors2 = [];
 for (const c of colors) {
@@ -221,11 +363,13 @@ server.on("login", function(client) {
 		client.end("L.");
 		return;
 	}
+	clientPrefs[client.username] = defaultClientPrefs;
 	const addr = client.socket.remoteAddress + ":" + client.socket.remotePort;
 	console.log(client.username + " connected", "(" + addr + ")");
 	broadcast("\u00A7a\u00BB \u00A79" + client.username, client);
 
 	client.on("end", function() {
+		delete clientPrefs[client.username];
 		console.log(client.username + " disconnected", "(" + addr + ")");
 		broadcast("\u00A7c\u00AB \u00A79" + client.username, client);
 	});
@@ -235,10 +379,10 @@ server.on("login", function(client) {
 		isHardcore: false,
 		gameMode: 2,
 		previousGameMode: -1,
-		worldNames: "minecraft:overworld",
+		worldNames: "minecraft:world_the_end",
 		dimensionCodec: getDimensionCodec(client.version),
 		worldType: "minecraft:the_end",
-		worldName: "minecraft:overworld",
+		worldName: "minecraft:world_the_end",
 		hashedSeed: [ 0, 0 ],
 		maxPlayers: server.maxPlayers,
 		viewDistance: 0,
@@ -269,7 +413,7 @@ server.on("login", function(client) {
 		angle: [ 0, 0, 0, 0 ]
 	});
 	setMap(client);
-	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73"));
+	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
 	for (let i = 0; i < 36; i++) {
 		spawnMap(client, i);
 	}
@@ -290,7 +434,7 @@ server.on("login", function(client) {
 		}
 	});
 	client.on("chat_command", function(data) {
-		const args = data.command.trim().replace(/[\u00A7\u0000-\u001F\u007F-\u009F]/g, "").split(" ");
+		const args = data.command.replace(/[\u00A7\u0000-\u001F\u007F-\u009F]/g, "").trim().split(" ");
 		args[0] = args[0].toLowerCase();
 		if (args[0] in cmds) {
 			cmds[args[0]].run(args.slice(1), client);
@@ -373,6 +517,72 @@ cmds.help = cmds.h = cmds["?"] = {
 			}
 		} else {
 			sendMessage(client, "\u00A79Commands: \u00A73" + getCmdList().join(" \u00A79; \u00A73"));
+		}
+	}
+};
+
+cmds.songs = cmds.song = cmds.s = {
+	main: "songs",
+	desc: "Manage songs.",
+	usage: "[song|skip]",
+	run: async function(args, client) {
+		if (args.length > 0) {
+			const songName = args.join(" ");
+			if (songName.toLowerCase() == "skip" || songName.toLowerCase() == "s") {
+				stopSong();
+				broadcast("\u00A79Song has been skipped!")
+			} else {
+				playSong(songName);
+				if (currSong != null) {
+					broadcast("\u00A79Now playing: \u00A73" + currSong);
+				} else {
+					sendMessage(client, "\u00A79Error: Song not found!");
+				}
+			}
+		} else {
+			sendMessage(client, "\u00A79Songs: \u00A73" + Object.keys(songs).join("\u00A79,\u00A73 ").toProperCase());
+		}
+	}
+};
+
+cmds.preferences = cmds.prefs = cmds.pref = {
+	main: "preferences",
+	desc: "Set user preferences.",
+	usage: "[key] [value]",
+	run: async function(args, client) {
+		if (client == null) {
+			sendMessage(client, "Server cannot set preferences.");
+			return;
+		}
+		if (args.length > 0) {
+			let currPref = null;
+			for (const pref in clientPrefs[client.username]) {
+				if (pref.toLowerCase() == args[0].toLowerCase()) {
+					currPref = pref;
+					break;
+				}
+			}
+			if (currPref == null) {
+				sendMessage(client, "\u00A79Error: Invalid preference!");
+			} else {
+				if (args.length > 1) {
+					const newVal = args[1].toLowerCase();
+					if (newVal == "true" || newVal == "1") {
+						clientPrefs[client.username][currPref] = true;
+					} else if (newVal == "false" || newVal == "0") {
+						clientPrefs[client.username][currPref] = false;
+					} else {
+						sendMessage(client, "\u00A79Error: Invalid value! Must be either \u00A73true \u00A79or \u00A73false\u00A79!");
+						return;
+					}
+					sendMessage(client, "\u00A73" + currPref + "\u00A79 has been set to \u00A73" + clientPrefs[client.username][currPref] + "\u00A79!");
+				} else {
+					clientPrefs[client.username][currPref] = !clientPrefs[client.username][currPref];
+					sendMessage(client, "\u00A73" + currPref + "\u00A79 has been toggled to \u00A73" + clientPrefs[client.username][currPref] + "\u00A79!");
+				}
+			}
+		} else {
+			sendMessage(client, "\u00A79Preferences: \u00A73" + Object.entries(clientPrefs[client.username]).map(p => p[0] + "\u00A79: \u00A73" + p[1]).join("\u00A79, \u00A73"));
 		}
 	}
 };
@@ -556,6 +766,46 @@ cmds.list = cmds.l = cmds.online = cmds["tf!l"] = {
 		sendMessage(client, "\u00A79Online players (\u00A73" + server.playerCount + "\u00A79 / \u00A73" + server.maxPlayers + "\u00A79): \u00A73" + getOnlinePlayers().join("\u00A79, \u00A73"));
 	}
 };
+
+const instrToSoundId = {
+	HARP: 767,
+	BASEDRUM: 761,
+	SNARE: 770,
+	HAT: 768,
+	BASS: 762,
+	FLUTE: 765,
+	BELL: 763,
+	GUITAR: 766,
+	CHIME: 764,
+	XYLOPHONE: 771,
+	IRON_XYLOPHONE: 772,
+	COW_BELL: 773,
+	DIDGERIDOO: 774,
+	BIT: 775,
+	BANJO: 776,
+	PLING: 769
+};
+
+function sendNote(note, volume) {
+	const pitch = note % 25;
+	const fixedPitch = 0.5 * Math.pow(2, pitch / 12);
+	const instrumentId = Math.floor(note / 25);
+	const instrument = InstrumentIds[instrumentId];
+	if (!(instrument in instrToSoundId)) return;
+	const soundId = 7 + instrToSoundId[instrument];
+	iterateClients(async c => {
+		if (c.state != "play") return;
+		if (c.username in clientPrefs && !clientPrefs[c.username].music) return;
+		c.write("entity_sound_effect", {
+			soundId: soundId,
+			soundCategory: 2,
+			entityId: 0,
+			volume: volume,
+			pitch: fixedPitch,
+			seed: 0
+		});
+	});
+}
 
 let modelsCache = {};
 let lastModelsFetch = 0;
@@ -746,6 +996,30 @@ async function setMap(url, fin) {
 				c.write("map", d);
 			});
 		}
+		await iterateClients(async c => {
+			if (c.state != "play") return;
+			if (c.username in clientPrefs && !clientPrefs[c.username].finalSound) return;
+			c.write("sound_effect", {
+				soundId: 7 + 769,
+				soundCategory: 4,
+				x: 0,
+				y: 401 * 8,
+				z: 5 * 8,
+				volume: 1.0,
+				pitch: 1.5,
+				seed: 0
+			});
+			c.write("sound_effect", {
+				soundId: 67,
+				soundCategory: 4,
+				x: 0,
+				y: 401 * 8,
+				z: 5 * 8,
+				volume: 1.0,
+				pitch: 0.5,
+				seed: 0
+			});
+		});
 	}
 }
 function progress(i, t) {
@@ -817,12 +1091,37 @@ async function render(currOpts) {
 	let queue = [];
 	while (res2 == null || (!("output" in res2)) || "path" in res2.output[0]) {
 		if (res2 != null) {
-			if ("output" in res2) {
-				setMap(res2.output[0].path);
-			}
 			if ("step" in res2 && "total_steps" in res2) {
 				progress(res2.step, res2.total_steps);
 				lastProgress = [ res2.step, res2.total_steps ];
+			}
+			if ("output" in res2) {
+				setMap(res2.output[0].path);
+				iterateClients(async c => {
+					if (c.state != "play") return;
+					if (c.username in clientPrefs && !clientPrefs[c.username].progressSound) return;
+					if (onlyBigScreenFinal) {
+						c.write("entity_sound_effect", {
+							soundId: 7 + 769,
+							soundCategory: 4,
+							entityId: 0,
+							volume: 0.5,
+							pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
+							seed: 0
+						});
+					} else {
+						c.write("sound_effect", {
+							soundId: 7 + 769,
+							soundCategory: 4,
+							x: 0,
+							y: 401 * 8,
+							z: 5 * 8,
+							volume: 0.5,
+							pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
+							seed: 0
+						});
+					}
+				});
 			}
 		} else if (lastProgress != null) {
 			progress(...lastProgress);
@@ -857,7 +1156,6 @@ const shutdown = async function() {
 	process.exit();
 };
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const prompt = query => new Promise((resolve) => rl.question(query, resolve));
 
 rl.on("SIGINT", shutdown);
@@ -865,24 +1163,38 @@ process.on("SIGINT", shutdown);
 
 (async() => {
 	while (true) {
-		const cmd = (await prompt("> ")).trim();
-		const args = cmd.replace(/[\u00A7\u0000-\u001F\u007F-\u009F]/g, "").split(" ");
+		const cmd = await prompt("> ");
+		const args = cmd.replace(/[\u00A7\u0000-\u001F\u007F-\u009F]/g, "").trim().split(" ");
 		args[0] = args[0].toLowerCase();
 		if (args[0] in cmds) {
 			cmds[args[0]].run(args.slice(1), null);
-		} else if (args[0] == "ban" || args[0] == "b" && args.length > 1) {
-			const a = args.join(" ").toLowerCase().split(" ").slice(1);
-			for (const aa of a) {
-				if (blacklist.includes(aa)) {
-					blacklist.splice(blacklist.indexOf(aa), 1);
-				} else {
-					blacklist.push(aa);
-					await iterateClients(async c => {
-						if (!c.username) return;
-						if (a.includes(c.username.toLowerCase())) {
-							c.end("L.");
-						}
-					});
+		} else if (args[0] == "updsongs") {
+			updateSongs();
+			console.log("Updated songs!");
+		} else if (args[0] == "say") {
+			if (args.length > 1) {
+				broadcast("\u00A73Server \u00A79\u00A7o(Real)\u00A7r\u00A73 \u00BB \u00A79" + args.slice(1).join(" "));
+			} else {
+				console.log("Please specify a message to say!");
+			}
+		} else if (args[0] == "ban") {
+			if (args.length > 1) {
+				console.log("Please specify name or names to ban or unban!");
+			} else {
+				const a = args.join(" ").toLowerCase().split(" ").slice(1);
+				console.log("Banning/Unbanning: " + a.join(", "));
+				for (const aa of a) {
+					if (blacklist.includes(aa)) {
+						blacklist.splice(blacklist.indexOf(aa), 1);
+					} else {
+						blacklist.push(aa);
+						await iterateClients(async c => {
+							if (!c.username) return;
+							if (a.includes(c.username.toLowerCase())) {
+								c.end("L.");
+							}
+						});
+					}
 				}
 			}
 		} else {

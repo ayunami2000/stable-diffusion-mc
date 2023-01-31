@@ -2,3 +2,5 @@ node_modules
 package-lock.json
 auth.json
 token.json
+songs/*
+!songs/PUT_NBS_OR_MID_FILES_HERE
