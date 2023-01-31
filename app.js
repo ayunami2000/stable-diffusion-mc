@@ -115,6 +115,18 @@ const midiPlayer = new MidiPlayer.Player(function(event) {
 	}
 });
 
+let lastMBBv = -1;
+
+midiPlayer.on("playing", function(currentTick) {
+	const v = Math.floor(100 - midiPlayer.getSongPercentRemaining()) / 100;
+	if (v <= lastMBBv) return;
+	lastMBBv = v;
+	iterateClients(async c => {
+		if (c.state != "play") return;
+		updBossBar(c, v);
+	});
+});
+
 const songs = {};
 function updateSongs() {
 	for (const s in songs) {
@@ -124,8 +136,13 @@ function updateSongs() {
 	for (const s of songList) {
 		const sl = s.toLowerCase();
 		if (!(sl.endsWith(".nbs") || sl.endsWith(".mid") || sl.endsWith(".midi"))) continue;
+		let ext = sl.slice(s.lastIndexOf(".") + 1);
+		if (ext == "mid") ext += "i";
 		const b = sl.slice(0, s.lastIndexOf(".")).replace(/_/g, " ").replace(/ +/g, " ");
 		let k = b;
+		if (k in songs) {
+			k = b + " " + ext;
+		}
 		let i = 1;
 		while (k in songs) {
 			k = b + " " + i++;
@@ -150,6 +167,33 @@ function playNotes(nbs, tick) {
 let nbsInterval = -1;
 let currSong = null;
 
+function addBossBar(c) {
+	c.write("boss_bar", {
+		entityUUID: [ 0, 0, 0, 0 ],
+		action: 0,
+		title: JSON.stringify("\u00A79Playing: \u00A73" + currSong),
+		health: 0,
+		color: 1,
+		dividers: 0,
+		flags: 0
+	});
+}
+
+function updBossBar(c, v) {
+	c.write("boss_bar", {
+		entityUUID: [ 0, 0, 0, 0 ],
+		action: 2,
+		health: v
+	});
+}
+
+function remBossBar(c) {
+	c.write("boss_bar", {
+		entityUUID: [ 0, 0, 0, 0 ],
+		action: 1
+	});
+}
+
 // https://stackoverflow.com/a/5574446/6917520
 String.prototype.toProperCase = function () {
 	return this.replace(/\w\S*/g, function(txt) {
@@ -158,6 +202,9 @@ String.prototype.toProperCase = function () {
 };
 
 function playSong(song) {
+	if (song == null) {
+		song = Object.keys(songs)[Math.floor(Math.random() * Object.keys(songs).length)];
+	}
 	song = song.toLowerCase();
 	if (!(song in songs)) {
 		for (const s in songs) {
@@ -186,6 +233,10 @@ function playSong(song) {
 	if (song in songs) {
 		stopSong();
 		currSong = song.toProperCase();
+		iterateClients(async c => {
+			if (c.state != "play") return;
+			addBossBar(c);
+		});
 		song = songs[song];
 		if (song.toLowerCase().endsWith(".nbs")) {
 			const nbs = NBS.fromArrayBuffer(new Uint8Array(fs.readFileSync("songs/" + song)).buffer);
@@ -199,6 +250,9 @@ function playSong(song) {
 				for (let t = lastTick + 1; t <= tick; t++) {
 					setTimeout(() => playNotes(nbs, t), 0);
 				}
+				iterateClients(async c => {
+					updBossBar(c, tick / nbs.length);
+				});
 				if (tick >= nbs.length) {
 					clearInterval(nbsInterval);
 					nbsInterval = -1;
@@ -218,6 +272,7 @@ midiPlayer.on("endOfFile", () => {
 
 function songEnded() {
 	broadcast("\u00A79Song has ended!");
+	stopSong();
 }
 
 function stopSong() {
@@ -227,12 +282,13 @@ function stopSong() {
 	} else {
 		midiPlayer.stop();
 		instrumentIds = {};
+		lastMBBv = 0;
 	}
 	currSong = null;
+	iterateClients(async c => {
+		remBossBar(c);
+	});
 }
-
-// playSong("dream run - trance music for racing game");
-playSong("vgm rem");
 
 const colors = require("./colors.json");
 const colors2 = [];
@@ -392,16 +448,21 @@ function getItemFrameId(vers) {
 	return itemFrameIdCache[vers];
 }
 
+server.on("listening", function() {
+	// playSong("dream run - trance music for racing game");
+	playSong("vgm rem");
+});
+
 server.on("login", function(client) {
 	if (server.playerCount > options.maxPlayers) {
-		client.end("Server is full!");
+		client.end("\u00A79Server is full!");
 		return;
 	}
 	if (blacklist.includes(client.username.toLowerCase())) {
-		client.end("L.");
+		client.end("\u00A79L.");
 		return;
 	}
-	clientPrefs[client.username] = defaultClientPrefs;
+	clientPrefs[client.username] = JSON.parse(JSON.stringify(defaultClientPrefs));
 	const addr = client.socket.remoteAddress + ":" + client.socket.remotePort;
 	console.log(client.username + " connected", "(" + addr + ")");
 	broadcast("\u00A7a\u00BB \u00A79" + client.username, client);
@@ -450,6 +511,7 @@ server.on("login", function(client) {
 		location: { x: 0, y: 400, z: 0 },
 		angle: [ 0, 0, 0, 0 ]
 	});
+	addBossBar(client);
 	setMap(client);
 	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
 	for (let i = 0; i < 36; i++) {
@@ -562,15 +624,19 @@ cmds.help = cmds.h = cmds["?"] = {
 cmds.songs = cmds.song = cmds.s = {
 	main: "songs",
 	desc: "Manage songs.",
-	usage: "[song|stop]",
+	usage: "[song|stop|random|rand]",
 	run: async function(args, client) {
 		if (args.length > 0) {
 			const songName = args.join(" ");
-			if (songName.toLowerCase() == "stop" || songName.toLowerCase() == "s") {
+			if (songName.toLowerCase() == "stop") {
 				stopSong();
-				broadcast("\u00A79Song has been stopped!")
+				broadcast("\u00A79Song has been stopped!");
 			} else {
-				playSong(songName);
+				if (songName.toLowerCase() == "random" || songName.toLowerCase() == "rand") {
+					playSong(null);
+				} else {
+					playSong(songName);
+				}
 				if (currSong != null) {
 					broadcast("\u00A79Now playing: \u00A73" + currSong);
 				} else {
@@ -1189,7 +1255,7 @@ const shutdown = async function() {
 	console.log("Stopping!");
 	rl.close();
 	await iterateClients(async c => {
-		c.end("Server is stopping!");
+		c.end("\u00A79Server is stopping!");
 	});
 	process.exit();
 };
@@ -1229,7 +1295,7 @@ process.on("SIGINT", shutdown);
 						await iterateClients(async c => {
 							if (!c.username) return;
 							if (a.includes(c.username.toLowerCase())) {
-								c.end("L.");
+								c.end("\u00A79L.");
 							}
 						});
 					}
