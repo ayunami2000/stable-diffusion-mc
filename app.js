@@ -3,7 +3,7 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 
 const soundIds = {
 	761: {
-		BANGO: 841 + 7,
+		BANJO: 841 + 7,
 		BASEDRUM: 826 + 7,
 		BASS: 827 + 7,
 		BELL: 828 + 7,
@@ -21,7 +21,7 @@ const soundIds = {
 		XYLOPHONE: 836 + 7
 	},
 	760: {
-		BANGO: 776 + 7,
+		BANJO: 776 + 7,
 		BASEDRUM: 761 + 7,
 		BASS: 762 + 7,
 		BELL: 763 + 7,
