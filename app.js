@@ -311,7 +311,9 @@ function playSong(song) {
 			midiPlayer.loadFile("songs/" + song);
 			midiPlayer.play();
 		}
+		return true;
 	}
+	return false;
 }
 
 midiPlayer.on("endOfFile", () => {
@@ -682,12 +684,13 @@ cmds.songs = cmds.song = cmds.s = {
 				stopSong();
 				broadcast("\u00A79Song has been stopped!");
 			} else {
+				let songSuccess;
 				if (songName.toLowerCase() == "random" || songName.toLowerCase() == "rand") {
-					playSong(null);
+					songSuccess = playSong(null);
 				} else {
-					playSong(songName);
+					songSuccess = playSong(songName);
 				}
-				if (currSong != null) {
+				if (songSuccess) {
 					broadcast("\u00A79Now playing: \u00A73" + currSong);
 				} else {
 					sendMessage(client, "\u00A79Error: Song not found!");
