@@ -1,6 +1,63 @@
 const readline = require("readline");
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
+const soundIds = {
+	761: {
+		BANGO: 841 + 7,
+		BASEDRUM: 826 + 7,
+		BASS: 827 + 7,
+		BELL: 828 + 7,
+		BIT: 840 + 7,
+		CHIME: 829 + 7,
+		COW_BELL: 838 + 7,
+		DIDGERIDOO: 839 + 7,
+		FLUTE: 830 + 7,
+		GUITAR: 831 + 7,
+		HARP: 832 + 7,
+		HAT: 833 + 7,
+		IRON_XYLOPHONE: 837 + 7,
+		PLING: 834 + 7,
+		SNARE: 835 + 7,
+		XYLOPHONE: 836 + 7
+	},
+	760: {
+		BANGO: 776 + 7,
+		BASEDRUM: 761 + 7,
+		BASS: 762 + 7,
+		BELL: 763 + 7,
+		BIT: 775 + 7,
+		CHIME: 764 + 7,
+		COW_BELL: 773 + 7,
+		DIDGERIDOO: 774 + 7,
+		FLUTE: 765 + 7,
+		GUITAR: 766 + 7,
+		HARP: 767 + 7,
+		HAT: 768 + 7,
+		IRON_XYLOPHONE: 772 + 7,
+		PLING: 769 + 7,
+		SNARE: 770 + 7,
+		XYLOPHONE: 771 + 7
+	},
+	759: {
+		BANJO: 776 + 7,
+		BASEDRUM: 761 + 7,
+		BASS: 762 + 7,
+		BELL: 763 + 7,
+		BIT: 775 + 7,
+		CHIME: 764 + 7,
+		COW_BELL: 773 + 7,
+		DIDGERIDOO: 774 + 7,
+		FLUTE: 765 + 7,
+		GUITAR: 766 + 7,
+		HARP: 767 + 7,
+		HAT: 768 + 7,
+		IRON_XYLOPHONE: 772 + 7,
+		PLING: 769 + 7,
+		SNARE: 770 + 7,
+		XYLOPHONE: 771 + 7
+	}
+};
+
 const oldLog = console.log;
 const oldErr = console.error;
 const oldWarn = console.warn;
@@ -158,7 +215,7 @@ function playNotes(nbs, tick) {
 		const note = layer.notes[tick];
 		if (note && note.instrument < nbs.instruments.loaded.length) {
 			const key = Math.max(33, Math.min(57, note.key));
-			sendNote(((key - 33) % 25) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100, note.pitch / 100, note.panning / 100);
+			sendNote(((key - 33) % 25) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100, note.pitch / 100, nbs.nbsVersion >= 4 ? note.panning / 100 : 0);
 		}
 	}
 }
@@ -872,37 +929,25 @@ cmds.list = cmds.l = cmds.online = cmds["tf!l"] = {
 	}
 };
 
-const instrToSoundId = {
-	HARP: 767,
-	BASEDRUM: 761,
-	SNARE: 770,
-	HAT: 768,
-	BASS: 762,
-	FLUTE: 765,
-	BELL: 763,
-	GUITAR: 766,
-	CHIME: 764,
-	XYLOPHONE: 771,
-	IRON_XYLOPHONE: 772,
-	COW_BELL: 773,
-	DIDGERIDOO: 774,
-	BIT: 775,
-	BANJO: 776,
-	PLING: 769
-};
+function getSoundIds(vers) {
+	if (vers in soundIds) return soundIds[vers];
+	return {
+		PLING: 0
+	};
+}
 
 function sendNote(note, volume, precisePitch, pan) {
 	const pitch = note % 25;
 	const fixedPitch = 0.5 * Math.pow(2, (pitch + precisePitch) / 12);
 	const instrumentId = Math.floor(note / 25);
 	const instrument = InstrumentIds[instrumentId];
-	if (!(instrument in instrToSoundId)) return;
-	const soundId = 7 + instrToSoundId[instrument];
 	iterateClients(async c => {
 		if (c.state != "play") return;
 		if (c.username in clientPrefs && !clientPrefs[c.username].music) return;
+		const instrToSoundId = getSoundIds(c.version);
+		if (!(instrument in instrToSoundId)) return;
 		c.write("sound_effect", {
-			soundId: soundId,
+			soundId: instrToSoundId[instrument],
 			soundCategory: 2,
 			x: (0.5 * -pan) * 8,
 			y: 401.7 * 8,
@@ -1107,7 +1152,7 @@ async function setMap(url, fin) {
 			if (c.state != "play") return;
 			if (c.username in clientPrefs && !clientPrefs[c.username].finalSound) return;
 			c.write("sound_effect", {
-				soundId: 7 + 769,
+				soundId: getSoundIds(c.version)["PLING"],
 				soundCategory: 4,
 				x: 0,
 				y: 401.7 * 8,
@@ -1208,7 +1253,7 @@ async function render(currOpts) {
 					if (c.state != "play") return;
 					if (c.username in clientPrefs && !clientPrefs[c.username].progressSound) return;
 					c.write("sound_effect", {
-						soundId: 7 + 769,
+						soundId: getSoundIds(c.version)["PLING"],
 						soundCategory: 4,
 						x: 0,
 						y: 401.7 * 8,
