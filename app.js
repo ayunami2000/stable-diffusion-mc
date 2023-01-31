@@ -88,14 +88,14 @@ function getMidiInstrumentNote(midiInstrument, midiPitch, midiVolume) {
 	const noteId = pitch + InstrumentIds.indexOf(instrument) * 25;
 	const volume = midiVolume / 127.0;
 
-	sendNote(noteId, volume);
+	sendNote(noteId, volume, 0, 0);
 }
 function getMidiPercussionNote(midiPitch, midiVolume) {
 	if (midiPitch in percussionMap) {
 		const noteId = percussionMap[midiPitch];
 		const volume = midiVolume / 127.0;
 
-		sendNote(noteId, volume);
+		sendNote(noteId, volume, 0, 0);
 	}
 }
 let instrumentIds = {};
@@ -157,9 +157,8 @@ function playNotes(nbs, tick) {
 		const layerVolume = layer.volume / 100;
 		const note = layer.notes[tick];
 		if (note && note.instrument < nbs.instruments.loaded.length) {
-			if (note.key >= 33 && note.key <= 57) {
-				sendNote((note.key - 33) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100);
-			}
+			const key = Math.max(33, Math.min(57, note.key));
+			sendNote(((key - 33) % 25) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100, note.pitch / 100, note.panning / 100);
 		}
 	}
 }
@@ -205,7 +204,7 @@ function playSong(song) {
 	if (song == null) {
 		song = Object.keys(songs)[Math.floor(Math.random() * Object.keys(songs).length)];
 	}
-	song = song.toLowerCase();
+	song = song.toLowerCase().replace(/_/g, " ");
 	if (!(song in songs)) {
 		for (const s in songs) {
 			if (s.startsWith(song)) {
@@ -890,9 +889,9 @@ const instrToSoundId = {
 	PLING: 769
 };
 
-function sendNote(note, volume) {
+function sendNote(note, volume, precisePitch, pan) {
 	const pitch = note % 25;
-	const fixedPitch = 0.5 * Math.pow(2, pitch / 12);
+	const fixedPitch = 0.5 * Math.pow(2, (pitch + precisePitch) / 12);
 	const instrumentId = Math.floor(note / 25);
 	const instrument = InstrumentIds[instrumentId];
 	if (!(instrument in instrToSoundId)) return;
@@ -900,10 +899,22 @@ function sendNote(note, volume) {
 	iterateClients(async c => {
 		if (c.state != "play") return;
 		if (c.username in clientPrefs && !clientPrefs[c.username].music) return;
+		/*
 		c.write("entity_sound_effect", {
 			soundId: soundId,
 			soundCategory: 2,
 			entityId: 0,
+			volume: volume,
+			pitch: fixedPitch,
+			seed: 0
+		});
+		*/
+		c.write("sound_effect", {
+			soundId: soundId,
+			soundCategory: 2,
+			x: (0.5 * pan) * 8,
+			y: 401 * 8,
+			z: 0,
 			volume: volume,
 			pitch: fixedPitch,
 			seed: 0
