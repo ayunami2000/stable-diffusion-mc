@@ -510,7 +510,9 @@ server.on("login", function(client) {
 		location: { x: 0, y: 400, z: 0 },
 		angle: [ 0, 0, 0, 0 ]
 	});
-	addBossBar(client);
+	if (currSong != null) {
+		addBossBar(client);
+	}
 	setMap(client);
 	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
 	for (let i = 0; i < 36; i++) {
@@ -899,27 +901,16 @@ function sendNote(note, volume, precisePitch, pan) {
 	iterateClients(async c => {
 		if (c.state != "play") return;
 		if (c.username in clientPrefs && !clientPrefs[c.username].music) return;
-		if (pan == 0) {
-			c.write("entity_sound_effect", {
-				soundId: soundId,
-				soundCategory: 2,
-				entityId: 0,
-				volume: volume,
-				pitch: fixedPitch,
-				seed: 0
-			});
-		} else {
-			c.write("sound_effect", {
-				soundId: soundId,
-				soundCategory: 2,
-				x: (0.5 * pan) * 8,
-				y: 401.7 * 8,
-				z: 0,
-				volume: volume,
-				pitch: fixedPitch,
-				seed: 0
-			});
-		}
+		c.write("sound_effect", {
+			soundId: soundId,
+			soundCategory: 2,
+			x: (0.5 * -pan) * 8,
+			y: 401.7 * 8,
+			z: 0,
+			volume: volume,
+			pitch: fixedPitch,
+			seed: 0
+		});
 	});
 }
 
@@ -1216,27 +1207,16 @@ async function render(currOpts) {
 				iterateClients(async c => {
 					if (c.state != "play") return;
 					if (c.username in clientPrefs && !clientPrefs[c.username].progressSound) return;
-					if (onlyBigScreenFinal) {
-						c.write("entity_sound_effect", {
-							soundId: 7 + 769,
-							soundCategory: 4,
-							entityId: 0,
-							volume: 0.5,
-							pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
-							seed: 0
-						});
-					} else {
-						c.write("sound_effect", {
-							soundId: 7 + 769,
-							soundCategory: 4,
-							x: 0,
-							y: 401.7 * 8,
-							z: 5 * 8,
-							volume: 0.5,
-							pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
-							seed: 0
-						});
-					}
+					c.write("sound_effect", {
+						soundId: 7 + 769,
+						soundCategory: 4,
+						x: 0,
+						y: 401.7 * 8,
+						z: onlyBigScreenFinal ? 0 : (5 * 8),
+						volume: 0.5,
+						pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
+						seed: 0
+					});
 				});
 			}
 		} else if (lastProgress != null) {
