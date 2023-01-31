@@ -272,14 +272,6 @@ function playSong(song) {
 	}
 	if (!(song in songs)) {
 		for (const s in songs) {
-			if (s.endsWith(song)) {
-				song = s;
-				break;
-			}
-		}
-	}
-	if (!(song in songs)) {
-		for (const s in songs) {
 			if (s.includes(song)) {
 				song = s;
 				break;

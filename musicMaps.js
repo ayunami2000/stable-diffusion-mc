@@ -1,7 +1,7 @@
 const nbsToInstr = [
 	"HARP",
 	"BASS",
-	"BASSDRUM",
+	"BASEDRUM",
 	"SNARE",
 	"HAT",
 	"GUITAR",
