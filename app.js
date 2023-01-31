@@ -899,26 +899,27 @@ function sendNote(note, volume, precisePitch, pan) {
 	iterateClients(async c => {
 		if (c.state != "play") return;
 		if (c.username in clientPrefs && !clientPrefs[c.username].music) return;
-		/*
-		c.write("entity_sound_effect", {
-			soundId: soundId,
-			soundCategory: 2,
-			entityId: 0,
-			volume: volume,
-			pitch: fixedPitch,
-			seed: 0
-		});
-		*/
-		c.write("sound_effect", {
-			soundId: soundId,
-			soundCategory: 2,
-			x: (0.5 * pan) * 8,
-			y: 401 * 8,
-			z: 0,
-			volume: volume,
-			pitch: fixedPitch,
-			seed: 0
-		});
+		if (pan == 0) {
+			c.write("entity_sound_effect", {
+				soundId: soundId,
+				soundCategory: 2,
+				entityId: 0,
+				volume: volume,
+				pitch: fixedPitch,
+				seed: 0
+			});
+		} else {
+			c.write("sound_effect", {
+				soundId: soundId,
+				soundCategory: 2,
+				x: (0.5 * pan) * 8,
+				y: 401 * 8,
+				z: 0,
+				volume: volume,
+				pitch: fixedPitch,
+				seed: 0
+			});
+		}
 	});
 }
 
