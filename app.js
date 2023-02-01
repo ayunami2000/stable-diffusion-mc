@@ -1062,7 +1062,7 @@ function sendNote(note, volume, precisePitch, pan) {
 		c.write("sound_effect", {
 			soundId: instrToSoundId[instrument],
 			soundCategory: 2,
-			x: (0.5 * -pan) * 8,
+			x: (2 * -pan) * 8,
 			y: 401.7 * 8,
 			z: 0,
 			volume: volume,
