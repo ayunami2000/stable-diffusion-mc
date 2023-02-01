@@ -714,7 +714,8 @@ let opts = {
 	prompt: settings.defaultPrompt,
 	negPrompt: settings.defaultNegPrompt,
 	model: settings.defaultModel,
-	vae: settings.defaultVae
+	vae: settings.defaultVae,
+	hypnet: settings.defaultHypnet
 };
 
 let cmdList = null;
@@ -934,8 +935,8 @@ cmds.clearnegprompt = cmds.clearnegativeprompt = cmds.clearneg = cmds.clearnegat
 
 cmds.model = cmds.m = {
 	main: "model",
-	desc: "Set the model.",
-	usage: "<model>",
+	desc: "List models and set the model.",
+	usage: "[model|reset|r]",
 	run: async function(args, client) {
 		if (args.length == 0) {
 			sendMessage(client, "\u00A79Current model: \u00A73" + opts.model + await getModelListText());
@@ -945,8 +946,13 @@ cmds.model = cmds.m = {
 				return;
 			}
 			const models = await getModels();
-			const model = args.join(" ");
-			const pm = models.options["stable-diffusion"].filter(m => m.toLowerCase() == model.toLowerCase());
+			const model = args.join(" ").toLowerCase().trim();
+			if (model == "reset") {
+				opts.model = settings.defaultModel;
+				broadcast("\u00A79Model has been reset!");
+				return;
+			}
+			const pm = models.options["stable-diffusion"].filter(m => m.toLowerCase().trim() == model);
 			if (pm.length > 0) {
 				opts.model = pm[0];
 				broadcast("\u00A79Model has been set to \u00A73" + opts.model + "\u00A79!");
@@ -959,8 +965,8 @@ cmds.model = cmds.m = {
 
 cmds.vae = cmds.v = {
 	main: "vae",
-	desc: "Set the VAE.",
-	usage: "<VAE>",
+	desc: "List models and set the VAE.",
+	usage: "[VAE|none|n|reset|r]",
 	run: async function(args, client) {
 		if (args.length == 0) {
 			sendMessage(client, "\u00A79Current VAE: \u00A73" + opts.vae + await getModelListText());
@@ -969,14 +975,59 @@ cmds.vae = cmds.v = {
 				sendMessage(client, "\u00A79Error: Currently generating!");
 				return;
 			}
+			const model = args.join(" ").toLowerCase().trim();
+			if (model == "none") {
+				opts.vae = "";
+				broadcast("\u00A79VAE has been unset!");
+				return;
+			}
+			if (model == "reset") {
+				opts.vae = settings.defaultVae;
+				broadcast("\u00A79VAE has been reset!");
+				return;
+			}
 			const models = await getModels();
-			const model = args.join(" ");
-			const pm = models.options.vae.filter(m => m.toLowerCase() == model.toLowerCase());
+			const pm = models.options.vae.filter(m => m.toLowerCase().trim() == model);
 			if (pm.length > 0) {
 				opts.vae = pm[0];
 				broadcast("\u00A79VAE has been set to \u00A73" + opts.vae + "\u00A79!");
 			} else {
 				sendMessage(client, "\u00A79Error: VAE not found!");
+			}
+		}
+	}
+};
+
+cmds.hypernetwork = cmds.hypnet = {
+	main: "hypernetwork",
+	desc: "List models and set the hypernetwork.",
+	usage: "[hypernetwork|none|n|reset|r]",
+	run: async function(args, client) {
+		if (args.length == 0) {
+			sendMessage(client, "\u00A79Current hypernetwork: \u00A73" + opts.hypnet + await getModelListText());
+		} else {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
+			const model = args.join(" ").toLowerCase().trim();
+			if (model == "none") {
+				opts.hypnet = "";
+				broadcast("\u00A79Hypernetwork has been unset!");
+				return;
+			}
+			if (model == "reset") {
+				opts.hypnet = settings.defaultHypnet;
+				broadcast("\u00A79Hypernetwork has been reset!");
+				return;
+			}
+			const models = await getModels();
+			const pm = models.options.hypernetwork.filter(m => m.toLowerCase().trim() == model);
+			if (pm.length > 0) {
+				opts.hypnet = pm[0];
+				broadcast("\u00A79Hypernetwork has been set to \u00A73" + opts.hypnet + "\u00A79!");
+			} else {
+				sendMessage(client, "\u00A79Error: Hypernetwork not found!");
 			}
 		}
 	}
@@ -1039,7 +1090,6 @@ async function getModelListText() {
 	const models = await getModels();
 	let res = "\n\u00A79Available models:\n";
 	for (const cat in models.options) {
-		if (cat == "hypernetwork") continue;
 		res += "\u00A79\u00BB \u00A73" + cat + "\u00A79: \u00A73" + models.options[cat].join("\u00A79, \u00A73") + "\n";
 	}
 	res = res.slice(0, res.length - 1);
@@ -1322,31 +1372,37 @@ function giveMap(client) {
 const sleep = async ms => await new Promise(r => setTimeout(r, ms));
 async function render(currOpts) {
 	broadcast("\u00A79Starting generation!");
+	const d = {
+		active_tags: [],
+		guidance_scale: 12,
+		height: 768,
+		negative_prompt: currOpts.negPrompt,
+		num_inference_steps: 28,
+		num_outputs: 1,
+		original_prompt: currOpts.prompt,
+		output_format: "png",
+		output_quality: 75,
+		prompt: currOpts.prompt,
+		sampler: "euler_a",
+		seed: Math.random() * 1000000,
+		session_id: sessionId,
+		show_only_filtered_image: true,
+		stream_image_progress: true,
+		stream_progress_updates: true,
+		turbo: true,
+		use_full_precision: true,
+		use_stable_diffusion_model: currOpts.model,
+		width: 768
+	};
+	if (currOpts.vae != "") {
+		d.use_vae_model = currOpts.vae;
+	}
+	if (currOpts.hypnet != "") {
+		d.use_hypernetwork_model = currOpts.hypnet;
+	}
 	const res = await (await fetch(hhh + "/render", {
 		headers: hh,
-		body: JSON.stringify({
-			active_tags: [],
-			guidance_scale: 12,
-			height: 768,
-			negative_prompt: currOpts.negPrompt,
-			num_inference_steps: 28,
-			num_outputs: 1,
-			original_prompt: currOpts.prompt,
-			output_format: "png",
-			output_quality: 75,
-			prompt: currOpts.prompt,
-			sampler: "euler_a",
-			seed: Math.random() * 1000000,
-			session_id: sessionId,
-			show_only_filtered_image: true,
-			stream_image_progress: true,
-			stream_progress_updates: true,
-			turbo: true,
-			use_full_precision: true,
-			use_stable_diffusion_model: currOpts.model,
-			use_vae_model: currOpts.vae,
-			width: 768
-		}),
+		body: JSON.stringify(d),
 		method: "POST"
 	})).json();
 	await sleep(500);
