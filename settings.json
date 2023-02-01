@@ -10,5 +10,6 @@
 	"defaultNegPrompt": "",
 	"defaultModel": "landscapemix",
 	"defaultVae": "vae-ft-mse-840000-ema-pruned",
-	"defaultDither": "three-sierra"
+	"defaultDither": "three-sierra",
+	"defaultSong": "dream run trance music for racing game"
 }

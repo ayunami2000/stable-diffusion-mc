@@ -560,10 +560,11 @@ function getItemFrameId(vers) {
 	return itemFrameIdCache[vers];
 }
 
-server.on("listening", function() {
-	playSong("dream run trance music for racing game");
-	// playSong("vgm rem");
-});
+if (settings.defaultSong && settings.defaultSong != "") {
+	server.on("listening", function() {
+		playSong(settings.defaultSong);
+	});
+}
 
 server.on("login", function(client) {
 	if (server.playerCount > server.maxPlayers) {
