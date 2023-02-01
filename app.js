@@ -1400,6 +1400,9 @@ async function render(currOpts) {
 	if (currOpts.hypnet != "") {
 		d.use_hypernetwork_model = currOpts.hypnet;
 	}
+	let loadingInterval = setInterval(() => {
+		progress();
+	}, 500);
 	const res = await (await fetch(hhh + "/render", {
 		headers: hh,
 		body: JSON.stringify(d),
@@ -1411,10 +1414,11 @@ async function render(currOpts) {
 	let queue = [];
 	while (res2 == null || (!("output" in res2)) || "path" in res2.output[0]) {
 		if (res2 != null) {
-			if ("detail" in res2 && res2.detail.toLowerCase().includes("early")) {
-				progress();
-			}
 			if ("step" in res2 && "total_steps" in res2) {
+				if (loadingInterval != -1) {
+					clearInterval(loadingInterval);
+					loadingInterval = -1;
+				}
 				progress(res2.step, res2.total_steps);
 				lastProgress = [ res2.step, res2.total_steps ];
 			}
@@ -1442,7 +1446,12 @@ async function render(currOpts) {
 			res2 = null;
 		}
 	}
+	progress(lastProgress[1], lastProgress[1]);
 	progressSound(lastProgress[1], lastProgress[1]);
+	if (loadingInterval != -1) {
+		clearInterval(loadingInterval);
+		loadingInterval = -1;
+	}
 	await setMap(res2.output[0].data, true);
 	broadcast("\u00A79Done generating!");
 }
