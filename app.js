@@ -18,7 +18,8 @@ const soundIds = {
 		IRON_XYLOPHONE: 837 + 7,
 		PLING: 834 + 7,
 		SNARE: 835 + 7,
-		XYLOPHONE: 836 + 7
+		XYLOPHONE: 836 + 7,
+		ARROW_HIT_PLAYER: 67
 	},
 	760: {
 		BANJO: 776 + 7,
@@ -36,7 +37,8 @@ const soundIds = {
 		IRON_XYLOPHONE: 772 + 7,
 		PLING: 769 + 7,
 		SNARE: 770 + 7,
-		XYLOPHONE: 771 + 7
+		XYLOPHONE: 771 + 7,
+		ARROW_HIT_PLAYER: 67
 	},
 	759: {
 		BANJO: 776 + 7,
@@ -54,7 +56,8 @@ const soundIds = {
 		IRON_XYLOPHONE: 772 + 7,
 		PLING: 769 + 7,
 		SNARE: 770 + 7,
-		XYLOPHONE: 771 + 7
+		XYLOPHONE: 771 + 7,
+		ARROW_HIT_PLAYER: 67
 	}
 };
 
@@ -73,7 +76,14 @@ console.log = consoleBase(oldLog);
 console.error = consoleBase(oldErr);
 console.warn = consoleBase(oldWarn);
 
-const auth = require("./auth.json");
+let auth;
+
+try {
+	auth = require("./auth.json");
+} catch (e) {
+	auth = [];
+}
+
 const hh = {
 	"content-type": "application/json"
 };
@@ -179,9 +189,8 @@ midiPlayer.on("playing", function(currentTick) {
 	if (v <= lastMBBv) return;
 	lastMBBv = v;
 	iterateClients(async c => {
-		if (c.state != "play") return;
 		updBossBar(c, v);
-	});
+	}, "play");
 });
 
 const songs = {};
@@ -215,7 +224,7 @@ function playNotes(nbs, tick) {
 		const note = layer.notes[tick];
 		if (note && note.instrument < nbs.instruments.loaded.length) {
 			const key = Math.max(33, Math.min(57, note.key));
-			sendNote(((key - 33) % 25) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100, note.pitch / 100, nbs.nbsVersion >= 4 ? note.panning / 100 : 0);
+			sendNote(((key - 33) % 25) + InstrumentIds.indexOf(nbsToInstr[nbs.instruments.loaded[note.instrument].id]) * 25, layerVolume * note.velocity / 100, note.pitch / 100, note.panning / 100);
 		}
 	}
 }
@@ -282,9 +291,8 @@ function playSong(song) {
 		stopSong();
 		currSong = song.toProperCase();
 		iterateClients(async c => {
-			if (c.state != "play") return;
 			addBossBar(c);
-		});
+		}, "play");
 		song = songs[song];
 		if (song.toLowerCase().endsWith(".nbs")) {
 			const nbs = NBS.fromArrayBuffer(new Uint8Array(fs.readFileSync("songs/" + song)).buffer);
@@ -300,7 +308,7 @@ function playSong(song) {
 				}
 				iterateClients(async c => {
 					updBossBar(c, tick / nbs.length);
-				});
+				}, "play");
 				if (tick >= nbs.length) {
 					clearInterval(nbsInterval);
 					nbsInterval = -1;
@@ -337,7 +345,7 @@ function stopSong() {
 	currSong = null;
 	iterateClients(async c => {
 		remBossBar(c);
-	});
+	}, "play");
 }
 
 const colors = require("./colors.json");
@@ -499,13 +507,17 @@ function getItemFrameId(vers) {
 }
 
 server.on("listening", function() {
-	// playSong("dream run - trance music for racing game");
-	playSong("vgm rem");
+	playSong("dream run - trance music for racing game");
+	// playSong("vgm rem");
 });
 
 server.on("login", function(client) {
-	if (server.playerCount > options.maxPlayers) {
+	if (server.playerCount > server.maxPlayers) {
 		client.end("\u00A79Server is full!");
+		return;
+	}
+	if (!(client.version == 759 || client.version == 760 || client.version == 761)) {
+		client.end("\u00A79Unsupported version!");
 		return;
 	}
 	if (blacklist.includes(client.username.toLowerCase())) {
@@ -582,7 +594,7 @@ server.on("login", function(client) {
 		if (b) {
 			iterateClients(async c => {
 				cmds["tf!l"].run(null, c);
-			});
+			}, "play");
 		}
 	});
 	client.on("chat_command", function(data) {
@@ -604,10 +616,12 @@ server.on("listening", function() {
 	console.log("Server listening on port", server.socketServer.address().port);
 });
 
-async function iterateClients(cb, ...args) {
+async function iterateClients(cb, state, ...args) {
 	for (const clientId in server.clients) {
-		if (server.clients[clientId] === undefined) continue;
-		await cb(server.clients[clientId], ...args);
+		const client = server.clients[clientId];
+		if (client == undefined) continue;
+		if (state != null && client.state != state) return;
+		await cb(client, ...args);
 	}
 }
 
@@ -616,7 +630,7 @@ function broadcast(message, exclude) {
 	iterateClients(async client => {
 		if (client == exclude) return;
 		sendMessage(client, message);
-	});
+	}, "play");
 }
 
 function sendMessage(client, message) {
@@ -927,7 +941,8 @@ cmds.list = cmds.l = cmds.online = cmds["tf!l"] = {
 function getSoundIds(vers) {
 	if (vers in soundIds) return soundIds[vers];
 	return {
-		PLING: 0
+		PLING: 67,
+		ARROW_HIT_PLAYER: 67
 	};
 }
 
@@ -937,7 +952,6 @@ function sendNote(note, volume, precisePitch, pan) {
 	const instrumentId = Math.floor(note / 25);
 	const instrument = InstrumentIds[instrumentId];
 	iterateClients(async c => {
-		if (c.state != "play") return;
 		if (c.username in clientPrefs && !clientPrefs[c.username].music) return;
 		const instrToSoundId = getSoundIds(c.version);
 		if (!(instrument in instrToSoundId)) return;
@@ -951,7 +965,7 @@ function sendNote(note, volume, precisePitch, pan) {
 			pitch: fixedPitch,
 			seed: 0
 		});
-	});
+	}, "play");
 }
 
 let modelsCache = {};
@@ -1102,10 +1116,9 @@ async function setMap(url, fin) {
 	};
 	lastMapD = d;
 	await iterateClients(async c => {
-		if (c.state != "play") return;
 		c.write("map", d);
 		giveMap(c);
-	});
+	}, "play");
 	if (lastMapDs.length == 0 || (fin || !onlyBigScreenFinal)) {
 		const rawData = await img.resize(768, 768).raw().toBuffer({ resolveWithObject: true });
 		const dithered = doDither ? dither.dither(rawData.data, rawData.info.width) : rawData.data;
@@ -1139,12 +1152,10 @@ async function setMap(url, fin) {
 			};
 			lastMapDs.push(d);
 			await iterateClients(async c => {
-				if (c.state != "play") return;
 				c.write("map", d);
-			});
+			}, "play");
 		}
 		await iterateClients(async c => {
-			if (c.state != "play") return;
 			if (c.username in clientPrefs && !clientPrefs[c.username].finalSound) return;
 			c.write("sound_effect", {
 				soundId: getSoundIds(c.version)["PLING"],
@@ -1157,7 +1168,7 @@ async function setMap(url, fin) {
 				seed: 0
 			});
 			c.write("sound_effect", {
-				soundId: 67,
+				soundId: getSoundIds(c.version)["ARROW_HIT_PLAYER"],
 				soundCategory: 4,
 				x: 0,
 				y: 401.7 * 8,
@@ -1166,18 +1177,17 @@ async function setMap(url, fin) {
 				pitch: 0.5,
 				seed: 0
 			});
-		});
+		}, "play");
 	}
 }
 function progress(i, t) {
 	const m = JSON.stringify("\u00A73" + i + "\u00A79 / \u00A73" + t + "\u00A79 (\u00A73" + Math.round(i / t * 100) + "%\u00A79)");
 	iterateClients(async c => {
-		if (c.state != "play") return;
 		c.write("system_chat", {
 			content: m,
 			isActionBar: true
 		});
-	});
+	}, "play");
 }
 function giveMap(client) {
 	if (client.state != "play") return;
@@ -1245,7 +1255,6 @@ async function render(currOpts) {
 			if ("output" in res2) {
 				setMap(res2.output[0].path);
 				iterateClients(async c => {
-					if (c.state != "play") return;
 					if (c.username in clientPrefs && !clientPrefs[c.username].progressSound) return;
 					c.write("sound_effect", {
 						soundId: getSoundIds(c.version)["PLING"],
@@ -1257,7 +1266,7 @@ async function render(currOpts) {
 						pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
 						seed: 0
 					});
-				});
+				}, "play");
 			}
 		} else if (lastProgress != null) {
 			progress(...lastProgress);
