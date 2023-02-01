@@ -1,0 +1,14 @@
+{
+	"onlyBigScreenFinal": false,
+	"discordEnabled": false,
+	"defaultClientPrefs": {
+		"progressSound": true,
+		"finalSound": true,
+		"music": true
+	},
+	"defaultPrompt": "rocky mountains",
+	"defaultNegPrompt": "",
+	"defaultModel": "landscapemix",
+	"defaultVae": "vae-ft-mse-840000-ema-pruned",
+	"defaultDither": "three-sierra"
+}

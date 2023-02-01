@@ -1,3 +1,5 @@
+const settings = require("./settings.json");
+
 const readline = require("readline");
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -95,23 +97,12 @@ if (auth.length > 1) {
 }
 const hhh = auth.length > 0 ? auth[0] : "http://localhost:9000";
 
-const onlyDitherFinal = false;
-
-const onlyBigScreenFinal = true;
-
-const discordEnabled = false;
-
 const blacklist = [];
 
-const defaultClientPrefs = {
-	progressSound: true,
-	finalSound: true,
-	music: true
-};
 const clientPrefs = {};
 
 let channel;
-if (discordEnabled) {
+if (settings.discordEnabled) {
 	const token = require("./token.json");
 	const { Client } = require("discord.js");
 	const dClient = new Client({ intents: [] });
@@ -204,7 +195,7 @@ function updateSongs() {
 		if (!(sl.endsWith(".nbs") || sl.endsWith(".mid") || sl.endsWith(".midi"))) continue;
 		let ext = sl.slice(s.lastIndexOf(".") + 1);
 		if (ext == "mid") ext += "i";
-		const b = sl.slice(0, s.lastIndexOf(".")).replace(/_/g, " ").replace(/ +/g, " ");
+		const b = sl.slice(0, s.lastIndexOf(".")).replace(/_|-/g, " ").replace(/ +/g, " ");
 		let k = b;
 		if (k in songs) {
 			k = b + " " + ext;
@@ -270,7 +261,7 @@ function playSong(song) {
 	if (song == null) {
 		song = Object.keys(songs)[Math.floor(Math.random() * Object.keys(songs).length)];
 	}
-	song = song.toLowerCase().replace(/_/g, " ");
+	song = song.toLowerCase().replace(/_|-/g, " ").replace(/ +/g, " ");
 	if (!(song in songs)) {
 		for (const s in songs) {
 			if (s.startsWith(song)) {
@@ -349,12 +340,14 @@ function stopSong() {
 }
 
 const colors = require("./colors.json");
+const imageQ = require("image-q");
+const palette = new imageQ.utils.Palette();
 const colors2 = [];
 for (const c of colors) {
+	palette.add(imageQ.utils.Point.createByRGBA(c[0], c[1], c[2], 255));
 	colors2.push((c[0] << 16) + (c[1] << 8) + c[2]);
 }
 const jsonParseMulti = require("./json-multi-parse.js");
-const Dither = require("image-dither");
 const { v4: uuidv4 } = require("uuid");
 
 const nearestColor = color => {
@@ -376,15 +369,76 @@ const nearestColor = color => {
 	return colors[index];
 }
 
-const dither = new Dither({
-	matrix: Dither.matrices.sierra3,
-	channels: 3,
-	findColor: nearestColor
-});
+const ditherAlgos = [
+	"nearest",
+	"riemersma",
+	"floyd-steinberg",
+	"false-floyd-steinberg",
+	"stucki",
+	"atkinson",
+	"jarvis",
+	"burkes",
+	"sierra",
+	"two-sierra",
+	"sierra-lite",
+	// custom
+	"three-sierra"
+];
+
+const quantizerThreeSierra = new imageQ.image.ErrorDiffusionArray(
+	new imageQ.distance.Euclidean(),
+	imageQ.image.ErrorDiffusionArrayKernel.FloydSteinberg
+);
+// ThreeSierra
+quantizerThreeSierra._kernel = [
+	[ 5 / 32, 1, 0 ],
+	[ 3 / 32, 2, 0 ],
+	[ 2 / 32, -2, 1 ],
+	[ 4 / 32, -1, 1 ],
+	[ 5 / 32, 0, 1 ],
+	[ 4 / 32, 1, 1 ],
+	[ 2 / 32, 2, 1 ],
+	[ 2 / 32, -1, 2 ],
+	[ 3 / 32, 0, 2 ],
+	[ 2 / 32, 1, 2 ]
+];
+
+const setImmediateImpl = typeof setImmediate == "function" ? setImmediate : typeof process != "undefined" && typeof process.nextTick == "function" ? callback => process.nextTick(callback) : callback => setTimeout(callback, 0);
+
+async function ditherImg(quant, rawData, progressCallback) {
+	const pointContainer = imageQ.utils.PointContainer.fromUint8Array(rawData.data, rawData.info.width, rawData.info.height);
+	if (quant == "three-sierra") {
+		const out = await new Promise((resolve, reject) => {
+			let pc;
+			const iterator = quantizerThreeSierra.quantize(pointContainer, palette);
+			const next = () => {
+				try {
+					const result = iterator.next();
+					if (result.done) {
+						resolve(pc);
+					} else {
+						if (result.value.pointContainer) pc = result.value.pointContainer;
+						if (progressCallback) progressCallback(result.value.progress);
+						setImmediateImpl(next);
+					}
+				} catch (error) {
+					reject(error);
+				}
+			};
+			setImmediateImpl(next);
+		  });
+		return out.toUint8Array();
+	} else {
+		const d = {
+			colorDistanceFormula: "euclidean",
+			quantization: quant
+		};
+		if (progressCallback) d.onProgress = progressCallback;
+		return (await imageQ.applyPalette(pointContainer, palette, d)).toUint8Array();
+	}
+}
 
 const mjpegBoundary = "7b3cc56e5f51db803f790dad720ed50a";
-const defaultPrompt = "rocky mountains";
-const defaultNegPrompt = "";
 let lastImg = null;
 let lastImgJpeg = null;
 const jpegRes = [];
@@ -507,7 +561,7 @@ function getItemFrameId(vers) {
 }
 
 server.on("listening", function() {
-	playSong("dream run - trance music for racing game");
+	playSong("dream run trance music for racing game");
 	// playSong("vgm rem");
 });
 
@@ -524,7 +578,7 @@ server.on("login", function(client) {
 		client.end("\u00A79L.");
 		return;
 	}
-	clientPrefs[client.username] = JSON.parse(JSON.stringify(defaultClientPrefs));
+	clientPrefs[client.username] = JSON.parse(JSON.stringify(settings.defaultClientPrefs));
 	const addr = client.socket.remoteAddress + ":" + client.socket.remotePort;
 	console.log(client.username + " connected", "(" + addr + ")");
 	broadcast("\u00A7a\u00BB \u00A79" + client.username, client);
@@ -650,11 +704,11 @@ function getOnlinePlayers() {
 
 let running = false;
 let opts = {
-	dither: true,
-	prompt: defaultPrompt,
-	negPrompt: defaultNegPrompt,
-	model: "landscapemix",
-	vae: "vae-ft-mse-840000-ema-pruned"
+	dither: settings.defaultDither,
+	prompt: settings.defaultPrompt,
+	negPrompt: settings.defaultNegPrompt,
+	model: settings.defaultModel,
+	vae: settings.defaultVae
 };
 
 let cmdList = null;
@@ -773,17 +827,26 @@ cmds.render = cmds.r = {
 	}
 };
 
-cmds.dither = cmds.d = {
-	main: "dither",
-	desc: "Toggle dithering.",
-	usage: "",
+cmds.ditheralgorithm = cmds.ditheralgo = cmds.dither = cmds.d = {
+	main: "ditheralgorithm",
+	desc: "Set dithering algorithm.",
+	usage: "[dithering algorithm]",
 	run: async function(args, client) {
-		if (running) {
-			sendMessage(client, "\u00A79Error: Currently generating!");
-			return;
+		if (args.length > 0) {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
+			const potentialDither = args.join(" ").toLowerCase();
+			if (!ditherAlgos.includes(potentialDither)) {
+				sendMessage(client, "\u00A79Error: Invalid dithering algorithm!");
+				return;
+			}
+			opts.dither = potentialDither;
+			broadcast("\u00A79Dithering algorithm has been set to \u00A73" + opts.dither + "\u00A79!");
+		} else {
+			sendMessage(client, "\u00A79Current dithering algorithm: \u00A73" + opts.dither + "\n\u00A79Available dithering algorithms: \u00A73" + ditherAlgos.join("\u00A79, \u00A73"));
 		}
-		opts.dither = !opts.dither;
-		broadcast("\u00A79Dithering has been " + (opts.dither ? "\u00A7aen" : "\u00A7cdis") + "abled\u00A79!");
 	}
 };
 
@@ -816,7 +879,7 @@ cmds.clearprompt = cmds.cp = {
 		}
 		let ta;
 		if (args.length > 0 && ((ta = args[0].toLowerCase()) == "reset" || ta == "r")) {
-			opts.prompt = defaultPrompt;
+			opts.prompt = settings.defaultPrompt;
 			broadcast("\u00A79Prompt has been reset!");
 		} else {
 			opts.prompt = "";
@@ -854,7 +917,7 @@ cmds.clearnegprompt = cmds.clearnegativeprompt = cmds.clearneg = cmds.clearnegat
 		}
 		let ta;
 		if (args.length > 0 && ((ta = args[0].toLowerCase()) == "reset" || ta == "r")) {
-			opts.negPrompt = defaultNegPrompt;
+			opts.negPrompt = settings.defaultNegPrompt;
 			broadcast("\u00A79Negative prompt has been reset!");
 		} else {
 			opts.negPrompt = "";
@@ -868,13 +931,13 @@ cmds.model = cmds.m = {
 	desc: "Set the model.",
 	usage: "<model>",
 	run: async function(args, client) {
-		if (running) {
-			sendMessage(client, "\u00A79Error: Currently generating!");
-			return;
-		}
 		if (args.length == 0) {
-			sendMessage(client, "\u00A79Current model: \u00A73" + opts.model);
+			sendMessage(client, "\u00A79Current model: \u00A73" + opts.model + await getModelListText());
 		} else {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
 			const models = await getModels();
 			const model = args.join(" ");
 			const pm = models.options["stable-diffusion"].filter(m => m.toLowerCase() == model.toLowerCase());
@@ -888,34 +951,18 @@ cmds.model = cmds.m = {
 	}
 };
 
-cmds.listmodel = cmds.lm = cmds.listvae = cmds.lv = {
-	main: "listmodel",
-	desc: "List available models.",
-	usage: "",
-	run: async function(args, client) {
-		const models = await getModels();
-		let res = "\u00A79Available models:\n";
-		for (const cat in models.options) {
-			if (cat == "hypernetwork") continue;
-			res += "\u00A79\u00BB \u00A73" + cat + "\u00A79: \u00A73" + models.options[cat].join("\u00A79, \u00A73") + "\n";
-		}
-		res = res.slice(0, res.length - 1);
-		sendMessage(client, res);
-	}
-};
-
 cmds.vae = cmds.v = {
 	main: "vae",
 	desc: "Set the VAE.",
 	usage: "<VAE>",
 	run: async function(args, client) {
-		if (running) {
-			sendMessage(client, "\u00A79Error: Currently generating!");
-			return;
-		}
 		if (args.length == 0) {
-			sendMessage(client, "\u00A79Current VAE: \u00A73" + opts.vae);
+			sendMessage(client, "\u00A79Current VAE: \u00A73" + opts.vae + await getModelListText());
 		} else {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
 			const models = await getModels();
 			const model = args.join(" ");
 			const pm = models.options.vae.filter(m => m.toLowerCase() == model.toLowerCase());
@@ -982,6 +1029,17 @@ async function getModels() {
 	return modelsCache;
 }
 
+async function getModelListText() {
+	const models = await getModels();
+	let res = "\n\u00A79Available models:\n";
+	for (const cat in models.options) {
+		if (cat == "hypernetwork") continue;
+		res += "\u00A79\u00BB \u00A73" + cat + "\u00A79: \u00A73" + models.options[cat].join("\u00A79, \u00A73") + "\n";
+	}
+	res = res.slice(0, res.length - 1);
+	return res;
+}
+
 async function spawnMap(client, i) {
 	if (client.state != "play") return;
 	const x = Math.floor(i / 6);
@@ -1031,7 +1089,6 @@ let lastMapD = null;
 const lastMapDs = [];
 
 async function setMap(url, fin) {
-	const doDither = (fin || !onlyDitherFinal) && opts.dither;
 	if (url == null) {
 		await sleep(50);
 		return await setMap(lastImg);
@@ -1059,11 +1116,11 @@ async function setMap(url, fin) {
 	let img;
 	try {
 		img = sharp(url, { failOn: "none" });
-		img = img.removeAlpha();
+		img = img.ensureAlpha();
 		await img.metadata();
 		await img.stats();
 		lastImg = (await img.clone().png().toBuffer({ resolveWithObject: true })).data;
-		if (fin && discordEnabled) {
+		if (fin && settings.discordEnabled) {
 			try {
 				channel.send({
 					files: [
@@ -1087,21 +1144,24 @@ async function setMap(url, fin) {
 		return;
 	}
 	const rawData2 = await img.clone().resize(128, 128).raw().toBuffer({ resolveWithObject: true });
-	const dithered2 = doDither ? dither.dither(rawData2.data, rawData2.info.width) : rawData2.data;
+	const dithered2 = await ditherImg(opts.dither, rawData2, progressXp);
+	const channelCount2 = dithered2.length / (rawData2.info.width * rawData2.info.height);
 	const buffer = [];
 	for (let x = 0; x < rawData2.info.width; x++) {
 		for (let y = 0; y < rawData2.info.height; y++) {
 			const idx = x * rawData2.info.height + y;
-			let r = dithered2[idx * rawData2.info.channels],
-				g = dithered2[idx * rawData2.info.channels + 1],
-				b = dithered2[idx * rawData2.info.channels + 2];
-			if (!doDither) {
+			let r = dithered2[idx * channelCount2],
+				g = dithered2[idx * channelCount2 + 1],
+				b = dithered2[idx * channelCount2 + 2];
+			const ind = colors2.indexOf((r << 16) + (g << 8) + b);
+			if (ind == -1) {
+				console.warn("Inexact RGB detected!", r, g, b);
 				const col = nearestColor([ r, g, b ]);
 				r = col[0];
 				g = col[1];
 				b = col[2];
 			}
-			buffer.push(4 + colors2.indexOf((r << 16) + (g << 8) + b));
+			buffer.push(4 + ind);
 		}
 	}
 	const d = {
@@ -1119,23 +1179,26 @@ async function setMap(url, fin) {
 		c.write("map", d);
 		giveMap(c);
 	}, "play");
-	if (lastMapDs.length == 0 || (fin || !onlyBigScreenFinal)) {
+	if (lastMapDs.length == 0 || (fin || !settings.onlyBigScreenFinal)) {
 		const rawData = await img.resize(768, 768).raw().toBuffer({ resolveWithObject: true });
-		const dithered = doDither ? dither.dither(rawData.data, rawData.info.width) : rawData.data;
+		const dithered = await ditherImg(opts.dither, rawData, progressXp);
+		const channelCount = dithered.length / (rawData.info.width * rawData.info.height);
 		const buffers = Array(36).fill(0).map(() => []);
 		for (let x = 0; x < rawData.info.width; x++) {
 			for (let y = 0; y < rawData.info.height; y++) {
 				const idx = x * rawData.info.height + y;
-				let r = dithered[idx * rawData.info.channels],
-					g = dithered[idx * rawData.info.channels + 1],
-					b = dithered[idx * rawData.info.channels + 2];
-				if (!doDither) {
+				let r = dithered[idx * channelCount],
+					g = dithered[idx * channelCount + 1],
+					b = dithered[idx * channelCount + 2];
+				const ind = colors2.indexOf((r << 16) + (g << 8) + b);
+				if (ind == -1) {
+					console.warn("Inexact RGB detected!", r, g, b);
 					const col = nearestColor([ r, g, b ]);
 					r = col[0];
 					g = col[1];
 					b = col[2];
 				}
-				buffers[Math.floor(x / 128) + Math.floor(y / 128) * 6].push(4 + colors2.indexOf((r << 16) + (g << 8) + b));
+				buffers[Math.floor(x / 128) + Math.floor(y / 128) * 6].push(4 + ind);
 			}
 		}
 		lastMapDs.length = 0;
@@ -1157,31 +1220,41 @@ async function setMap(url, fin) {
 		}
 		await iterateClients(async c => {
 			if (c.username in clientPrefs && !clientPrefs[c.username].finalSound) return;
-			c.write("sound_effect", {
-				soundId: getSoundIds(c.version)["PLING"],
-				soundCategory: 4,
-				x: 0,
-				y: 401.7 * 8,
-				z: 5 * 8,
-				volume: 1.0,
-				pitch: 1.5,
-				seed: 0
-			});
-			c.write("sound_effect", {
-				soundId: getSoundIds(c.version)["ARROW_HIT_PLAYER"],
-				soundCategory: 4,
-				x: 0,
-				y: 401.7 * 8,
-				z: 5 * 8,
-				volume: 1.0,
-				pitch: 0.5,
-				seed: 0
-			});
+			if (fin) {
+				c.write("sound_effect", {
+					soundId: getSoundIds(c.version)["PLING"],
+					soundCategory: 4,
+					x: 0,
+					y: 401.7 * 8,
+					z: 5 * 8,
+					volume: 1.0,
+					pitch: 1.5,
+					seed: 0
+				});
+				c.write("sound_effect", {
+					soundId: getSoundIds(c.version)["ARROW_HIT_PLAYER"],
+					soundCategory: 4,
+					x: 0,
+					y: 401.7 * 8,
+					z: 5 * 8,
+					volume: 1.0,
+					pitch: 0.5,
+					seed: 0
+				});
+			}
 		}, "play");
 	}
+	progressXp(-1);
+}
+const loadingText = "Loading...";
+let loadingCycle = 0;
+function cycleLoading() {
+	const res = "\u00A79" + loadingText.slice(0, loadingCycle) + "\u00A73" + loadingText[loadingCycle] + "\u00A79" + loadingText.slice(loadingCycle + 1);
+	loadingCycle = (loadingCycle + 1) % loadingText.length;
+	return res;
 }
 function progress(i, t) {
-	const m = JSON.stringify("\u00A73" + i + "\u00A79 / \u00A73" + t + "\u00A79 (\u00A73" + Math.round(i / t * 100) + "%\u00A79)");
+	const m = (!i && !t) ? JSON.stringify(cycleLoading()) : JSON.stringify("\u00A73" + i + "\u00A79 / \u00A73" + t + "\u00A79 (\u00A73" + Math.round(i / t * 100) + "%\u00A79)");
 	iterateClients(async c => {
 		c.write("system_chat", {
 			content: m,
@@ -1189,6 +1262,34 @@ function progress(i, t) {
 		});
 	}, "play");
 }
+
+function progressXp(p) {
+	const d = {
+		experienceBar: p == -1 ? 1 : (p / 100),
+		level: p == -1 ? 0 : p,
+		totalExperience: 0
+	};
+	iterateClients(async c => {
+		c.write("experience", d);
+	}, "play");
+}
+
+function progressSound(i, t) {
+	iterateClients(async c => {
+		if (c.username in clientPrefs && !clientPrefs[c.username].progressSound) return;
+		c.write("sound_effect", {
+			soundId: getSoundIds(c.version)["PLING"],
+			soundCategory: 4,
+			x: 0,
+			y: 401.7 * 8,
+			z: settings.onlyBigScreenFinal ? 0 : (5 * 8),
+			volume: 0.5,
+			pitch: 0.5 + 1.5 * i / t,
+			seed: 0
+		});
+	}, "play");
+}
+
 function giveMap(client) {
 	if (client.state != "play") return;
 	client.write("set_slot", {
@@ -1248,25 +1349,16 @@ async function render(currOpts) {
 	let queue = [];
 	while (res2 == null || (!("output" in res2)) || "path" in res2.output[0]) {
 		if (res2 != null) {
+			if ("detail" in res2 && res2.detail.toLowerCase().includes("early")) {
+				progress();
+			}
 			if ("step" in res2 && "total_steps" in res2) {
 				progress(res2.step, res2.total_steps);
 				lastProgress = [ res2.step, res2.total_steps ];
 			}
 			if ("output" in res2) {
+				progressSound(...lastProgress);
 				setMap(res2.output[0].path);
-				iterateClients(async c => {
-					if (c.username in clientPrefs && !clientPrefs[c.username].progressSound) return;
-					c.write("sound_effect", {
-						soundId: getSoundIds(c.version)["PLING"],
-						soundCategory: 4,
-						x: 0,
-						y: 401.7 * 8,
-						z: onlyBigScreenFinal ? 0 : (5 * 8),
-						volume: 0.5,
-						pitch: 0.5 + 1.5 * lastProgress[0] / lastProgress[1],
-						seed: 0
-					});
-				}, "play");
 			}
 		} else if (lastProgress != null) {
 			progress(...lastProgress);
@@ -1288,6 +1380,7 @@ async function render(currOpts) {
 			res2 = null;
 		}
 	}
+	progressSound(lastProgress[1], lastProgress[1]);
 	await setMap(res2.output[0].data, true);
 	broadcast("\u00A79Done generating!");
 }
