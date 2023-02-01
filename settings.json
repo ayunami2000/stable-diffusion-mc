@@ -1,6 +1,7 @@
 {
 	"onlyBigScreenFinal": true,
 	"discordEnabled": false,
+	"loopSong": true,
 	"defaultClientPrefs": {
 		"progressSound": true,
 		"finalSound": true,

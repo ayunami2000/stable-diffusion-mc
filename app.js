@@ -320,8 +320,13 @@ midiPlayer.on("endOfFile", () => {
 });
 
 function songEnded() {
-	broadcast("\u00A79Song has ended!");
+	const lastSong = currSong;
 	stopSong();
+	if (settings.loopSong) {
+		setTimeout(() => playSong(lastSong), 1000);
+	} else {
+		broadcast("\u00A79Song has ended!");
+	}
 }
 
 function stopSong() {
