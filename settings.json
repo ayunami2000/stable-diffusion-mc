@@ -14,5 +14,6 @@
 	"defaultHypnet": "",
 	"defaultDither": "three-sierra",
 	"defaultSong": "dream run trance music for racing game",
-	"wide": false
+	"wide": false,
+	"blurIcon": true
 }

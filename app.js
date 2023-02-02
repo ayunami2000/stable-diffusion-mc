@@ -1319,7 +1319,9 @@ async function setMap(url, fin) {
 		await img.stats();
 		lastImg = (await img.clone().png().toBuffer({ resolveWithObject: true })).data;
 		if (fin) {
-			lastIcon = (await img.clone().resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer({ resolveWithObject: true })).data;
+			let icon = img.clone().resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } });
+			if (settings.blurIcon) icon = icon.blur(8);
+			lastIcon = (await icon.png().toBuffer({ resolveWithObject: true })).data;
 			if (settings.discordEnabled) {
 				try {
 					channel.send({
