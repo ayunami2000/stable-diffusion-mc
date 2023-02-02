@@ -13,5 +13,6 @@
 	"defaultVae": "vae-ft-mse-840000-ema-pruned",
 	"defaultHypnet": "",
 	"defaultDither": "three-sierra",
-	"defaultSong": "dream run trance music for racing game"
+	"defaultSong": "dream run trance music for racing game",
+	"wide": false
 }

@@ -449,8 +449,8 @@ let lastImgJpeg = null;
 const jpegRes = [];
 const blankImg = sharp({
 	create: {
-		width: 768,
-		height: 768,
+		width: settings.wide ? 1024 : 768,
+		height: settings.wide ? 640 : 768,
 		channels: 3,
 		background: { r: 0, g: 0, b: 0 }
 	}
@@ -638,7 +638,7 @@ server.on("login", function(client) {
 	}
 	setMap(client);
 	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
-	for (let i = 0; i < 36; i++) {
+	for (let i = 0; i < (settings.wide ? 40 : 36); i++) {
 		spawnMap(client, i);
 	}
 	client.on("pick_item", function(data) {
@@ -1098,14 +1098,14 @@ async function getModelListText() {
 
 async function spawnMap(client, i) {
 	if (client.state != "play") return;
-	const x = Math.floor(i / 6);
-	const y = i % 6;
+	const x = Math.floor(i / (settings.wide ? 5 : 6));
+	const y = i % (settings.wide ? 5 : 6);
 	client.write("spawn_entity", {
 		entityId: 1 + i,
 		objectUUID: uuidv4(),
 		type: getItemFrameId(client.version),
-		x: 2.5 - x,
-		y: 403.5 - y,
+		x: (settings.wide ? 3.5 : 2.5) - x,
+		y: (settings.wide ? 403 : 403.5) - y,
 		z: 5,
 		pitch: -128,
 		yaw: 0,
@@ -1155,7 +1155,7 @@ async function setMap(url, fin) {
 		}
 		url.write("map", lastMapD);
 		giveMap(url);
-		for (let i = 0; i < 36; i++) {
+		for (let i = 0; i < (settings.wide ? 40 : 36); i++) {
 			url.write("map", lastMapDs[i]);
 		}
 		return;
@@ -1221,7 +1221,7 @@ async function setMap(url, fin) {
 		}
 	}
 	const d = {
-		itemDamage: 37,
+		itemDamage: 63,
 		scale: 4,
 		locked: false,
 		columns: 128,
@@ -1236,13 +1236,13 @@ async function setMap(url, fin) {
 		giveMap(c);
 	}, "play");
 	if (lastMapDs.length == 0 || (fin || !settings.onlyBigScreenFinal)) {
-		const rawData = await img.resize(768, 768).raw().toBuffer({ resolveWithObject: true });
+		const rawData = await img.resize(settings.wide ? 1024 : 768, settings.wide ? 640 : 768).raw().toBuffer({ resolveWithObject: true });
 		const dithered = await ditherImg(opts.dither, rawData, progressXp);
 		const channelCount = dithered.length / (rawData.info.width * rawData.info.height);
-		const buffers = Array(36).fill(0).map(() => []);
-		for (let x = 0; x < rawData.info.width; x++) {
-			for (let y = 0; y < rawData.info.height; y++) {
-				const idx = x * rawData.info.height + y;
+		const buffers = Array(settings.wide ? 40 : 36).fill(0).map(() => []);
+		for (let x = 0; x < rawData.info.height; x++) {
+			for (let y = 0; y < rawData.info.width; y++) {
+				const idx = x * rawData.info.width + y;
 				let r = dithered[idx * channelCount],
 					g = dithered[idx * channelCount + 1],
 					b = dithered[idx * channelCount + 2];
@@ -1254,11 +1254,11 @@ async function setMap(url, fin) {
 					g = col[1];
 					b = col[2];
 				}
-				buffers[Math.floor(x / 128) + Math.floor(y / 128) * 6].push(4 + ind);
+				buffers[Math.floor(x / 128) + Math.floor(y / 128) * (settings.wide ? 5 : 6)].push(4 + ind);
 			}
 		}
 		lastMapDs.length = 0;
-		for (let i = 0; i < 36; i++) {
+		for (let i = 0; i < (settings.wide ? 40 : 36); i++) {
 			const d = {
 				itemDamage: i,
 				scale: 4,
@@ -1368,7 +1368,7 @@ function giveMap(client) {
 				value: {
 					map: {
 						type: "int",
-						value: 37
+						value: 63
 					}
 				}
 			}
@@ -1381,7 +1381,8 @@ async function render(currOpts) {
 	const d = {
 		active_tags: [],
 		guidance_scale: 12,
-		height: 768,
+		width: settings.wide ? 1024 : 768,
+		height: settings.wide ? 640 : 768,
 		negative_prompt: currOpts.negPrompt,
 		num_inference_steps: 28,
 		num_outputs: 1,
@@ -1397,8 +1398,7 @@ async function render(currOpts) {
 		stream_progress_updates: true,
 		turbo: true,
 		use_full_precision: true,
-		use_stable_diffusion_model: currOpts.model,
-		width: 768
+		use_stable_diffusion_model: currOpts.model
 	};
 	if (currOpts.vae != "") {
 		d.use_vae_model = currOpts.vae;
