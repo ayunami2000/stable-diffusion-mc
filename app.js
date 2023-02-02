@@ -89,13 +89,17 @@ try {
 const hh = {
 	"content-type": "application/json"
 };
+let hhh = "http://localhost:9000";
 if (auth.length > 1) {
-	hh["authorization"] = "Basic " + auth[1];
+	hhh = auth[1];
 	if (auth.length > 2) {
-		hh["host"] = auth[2];
+		hh["authorization"] = "Basic " + auth[2];
+		if (auth.length > 3) {
+			hh["host"] = auth[3];
+		}
 	}
 }
-const hhh = auth.length > 0 ? auth[0] : "http://localhost:9000";
+const openAiToken = auth.length > 0 ? auth[0] : null;
 
 const blacklist = [];
 
@@ -431,7 +435,7 @@ async function ditherImg(quant, rawData, progressCallback) {
 				}
 			};
 			setImmediateImpl(next);
-		  });
+		});
 		return out.toUint8Array();
 	} else {
 		const d = {
@@ -830,6 +834,59 @@ cmds.help = cmds.h = cmds["?"] = {
 	}
 };
 
+function gpt3(prompt, user, cb) {
+	fetch("https://api.openai.com/v1/completions", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json; charset=utf-8",
+			Authorization: "Bearer " + openAiToken,
+		},
+		body: JSON.stringify({
+			model: "text-davinci-003",
+			prompt: prompt,
+			temperature: 0.7,
+			max_tokens: 256,
+			top_p: 1,
+			frequency_penalty: 0,
+			presence_penalty: 0,
+			user: user
+		})
+	}).then(resp => resp.json()).then(async resp => {
+		if ("choices" in resp && resp.choices.length > 0 && "text" in resp.choices[0]) {
+			cb(resp.choices[0].text);
+		} else if ("error" in resp && "message" in resp.error) {
+			console.error(resp.error.message);
+			cb(resp.error.message);
+		} else {
+			console.error("An error occurred.");
+			cb("An error occurred.");
+		}
+	}).catch(err => {
+		console.error(err);
+		cb("An error occurred.");
+	});
+}
+
+if (openAiToken != null && openAiToken != "") {
+	cmds["gpt-3"] = cmds.gpt3 = cmds.gpt = cmds.g = {
+		main: "gpt-3",
+		desc: "Talk to GPT-3.",
+		usage: "[prompt]",
+		run: async function(args, client) {
+			if (args.length > 0) {
+				const un = client == null ? "[Server]" : client.username;
+				const prompt = args.join(" ");
+				broadcast("\u00A73" + un + " \u00A79\u00A7o(To GPT-3)\u00A7r\u00A73 \u00BB \u00A79" + prompt);
+				gpt3(prompt, un, resp => {
+					broadcast("\u00A73GPT-3 \u00A79\u00A7o(To " + un + ")\u00A7r\u00A73 \u00BB \u00A79" + resp.trim().replace(/\t/g, "  "));
+				});
+			} else {
+				sendMessage(client, "\u00A79Error: No prompt specified!");
+			}
+		}
+	};
+}
+
 cmds.songs = cmds.song = cmds.s = {
 	main: "songs",
 	desc: "Manage songs.",
@@ -944,13 +1001,13 @@ cmds.prompt = cmds.p = {
 	desc: "Set the prompt.",
 	usage: "<\", \"-delimited tokens>",
 	run: async function(args, client) {
-		if (running) {
-			sendMessage(client, "\u00A79Error: Currently generating!");
-			return;
-		}
 		if (args.length == 0) {
 			sendMessage(client, "\u00A79Current prompt: \u00A73" + opts.prompt);
 		} else {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
 			opts.prompt = args.join(" ");
 			broadcast("\u00A79Prompt has been set to \u00A73" + opts.prompt + "\u00A79!");
 		}
@@ -982,13 +1039,13 @@ cmds.negprompt = cmds.negativeprompt = cmds.neg = cmds.negative = cmds.negp = cm
 	desc: "Set the negative prompt.",
 	usage: "<\", \"-delimited tokens>",
 	run: async function(args, client) {
-		if (running) {
-			sendMessage(client, "\u00A79Error: Currently generating!");
-			return;
-		}
 		if (args.length == 0) {
 			sendMessage(client, "\u00A79Current negative prompt: \u00A73" + opts.negPrompt);
 		} else {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
 			opts.negPrompt = args.join(" ");
 			broadcast("\u00A79Negative prompt has been set to \u00A73" + opts.negPrompt + "\u00A79!");
 		}
@@ -1575,7 +1632,7 @@ process.on("SIGINT", shutdown);
 			console.log("Updated songs!");
 		} else if (args[0] == "say") {
 			if (args.length > 1) {
-				broadcast("\u00A73Server \u00A79\u00A7o(Real)\u00A7r\u00A73 \u00BB \u00A79" + args.slice(1).join(" "));
+				broadcast("\u00A73[Server] \u00BB \u00A79" + args.slice(1).join(" "));
 			} else {
 				console.log("Please specify a message to say!");
 			}
