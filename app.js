@@ -444,6 +444,7 @@ async function ditherImg(quant, rawData, progressCallback) {
 }
 
 const mjpegBoundary = "7b3cc56e5f51db803f790dad720ed50a";
+let lastIcon = null;
 let lastImg = null;
 let lastImgJpeg = null;
 const jpegRes = [];
@@ -455,11 +456,14 @@ const blankImg = sharp({
 		background: { r: 0, g: 0, b: 0 }
 	}
 });
+blankImg.clone().ensureAlpha().resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(b => {
+	lastIcon = b;
+});
 blankImg.png().toBuffer().then(b => {
-	lastImgJpeg = b;
+	lastImg = b;
 });
 blankImg.jpeg().toBuffer().then(b => {
-	lastImg = b;
+	lastImgJpeg = b;
 });
 
 function writeJpegFrame(res, img) {
@@ -509,7 +513,72 @@ const options = {
 		}
 	},
 	hideErrors: true,
-	validateChannelProtocol: false/*,
+	validateChannelProtocol: false,
+	beforePing: r => {
+		r.players.sample.push({
+			name: "\u00A79\u00A7nPrompt",
+			id: "00000000-0000-0000-0000-000000000000"
+		});
+		let p = opts.prompt.match(/.{1,24}/g);
+		for (const pp of p) {
+			r.players.sample.push({
+				name: "\u00A73" + pp,
+				id: "00000000-0000-0000-0000-000000000000"
+			});
+		}
+		if (opts.negPrompt != "") {
+			r.players.sample.push({
+				name: "\u00A79\u00A7nNegative prompt",
+				id: "00000000-0000-0000-0000-000000000000"
+			});
+			p = opts.negPrompt.match(/.{1,24}/g);
+			for (const pp of p) {
+				r.players.sample.push({
+					name: "\u00A73" + pp,
+					id: "00000000-0000-0000-0000-000000000000"
+				});
+			}
+		}
+		r.players.sample.push({
+			name: "\u00A79\u00A7nModel",
+			id: "00000000-0000-0000-0000-000000000000"
+		});
+		p = opts.model.match(/.{1,24}/g);
+		for (const pp of p) {
+			r.players.sample.push({
+				name: "\u00A73" + pp,
+				id: "00000000-0000-0000-0000-000000000000"
+			});
+		}
+		if (opts.vae != "") {
+			r.players.sample.push({
+				name: "\u00A79\u00A7nVAE",
+				id: "00000000-0000-0000-0000-000000000000"
+			});
+			p = opts.vae.match(/.{1,24}/g);
+			for (const pp of p) {
+				r.players.sample.push({
+					name: "\u00A73" + pp,
+					id: "00000000-0000-0000-0000-000000000000"
+				});
+			}
+		}
+		if (opts.hypnet != "") {
+			r.players.sample.push({
+				name: "\u00A79\u00A7nHypernetwork",
+				id: "00000000-0000-0000-0000-000000000000"
+			});
+			p = opts.hypnet.match(/.{1,24}/g);
+			for (const pp of p) {
+				r.players.sample.push({
+					name: "\u00A73" + pp,
+					id: "00000000-0000-0000-0000-000000000000"
+				});
+			}
+		}
+		r.favicon = "data:image/png;base64," + Buffer.from(lastIcon).toString("base64");
+		return r;
+	}/*,
 	compressionThreshold: 256*/
 };
 
@@ -1176,15 +1245,18 @@ async function setMap(url, fin) {
 		await img.metadata();
 		await img.stats();
 		lastImg = (await img.clone().png().toBuffer({ resolveWithObject: true })).data;
-		if (fin && settings.discordEnabled) {
-			try {
-				channel.send({
-					files: [
-						lastImg
-					]
-				});
-			} catch (e) {
-				console.error(e);
+		if (fin) {
+			lastIcon = (await img.clone().resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer({ resolveWithObject: true })).data;
+			if (settings.discordEnabled) {
+				try {
+					channel.send({
+						files: [
+							lastImg
+						]
+					});
+				} catch (e) {
+					console.error(e);
+				}
 			}
 		}
 		lastImgJpeg = Buffer.from((await img.clone().jpeg().toBuffer({ resolveWithObject: true })).data);
@@ -1199,7 +1271,7 @@ async function setMap(url, fin) {
 	} catch (e) {
 		return;
 	}
-	const rawData2 = await img.clone().resize(128, 128).raw().toBuffer({ resolveWithObject: true });
+	const rawData2 = await img.clone().resize(128, 128, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true });
 	const dithered2 = await ditherImg(opts.dither, rawData2, progressXp);
 	const channelCount2 = dithered2.length / (rawData2.info.width * rawData2.info.height);
 	const buffer = [];
@@ -1208,8 +1280,9 @@ async function setMap(url, fin) {
 			const idx = x * rawData2.info.height + y;
 			let r = dithered2[idx * channelCount2],
 				g = dithered2[idx * channelCount2 + 1],
-				b = dithered2[idx * channelCount2 + 2];
-			const ind = colors2.indexOf((r << 16) + (g << 8) + b);
+				b = dithered2[idx * channelCount2 + 2],
+				a = rawData2.data[idx * channelCount2 + 3];
+			const ind = a == 0 ? -4 : colors2.indexOf((r << 16) + (g << 8) + b);
 			if (ind == -1) {
 				console.warn("Inexact RGB detected!", r, g, b);
 				const col = nearestColor([ r, g, b ]);
@@ -1236,7 +1309,7 @@ async function setMap(url, fin) {
 		giveMap(c);
 	}, "play");
 	if (lastMapDs.length == 0 || (fin || !settings.onlyBigScreenFinal)) {
-		const rawData = await img.resize(settings.wide ? 1024 : 768, settings.wide ? 640 : 768).raw().toBuffer({ resolveWithObject: true });
+		const rawData = await img.resize(settings.wide ? 1024 : 768, settings.wide ? 640 : 768, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true });
 		const dithered = await ditherImg(opts.dither, rawData, progressXp);
 		const channelCount = dithered.length / (rawData.info.width * rawData.info.height);
 		const buffers = Array(settings.wide ? 40 : 36).fill(0).map(() => []);
@@ -1245,8 +1318,9 @@ async function setMap(url, fin) {
 				const idx = x * rawData.info.width + y;
 				let r = dithered[idx * channelCount],
 					g = dithered[idx * channelCount + 1],
-					b = dithered[idx * channelCount + 2];
-				const ind = colors2.indexOf((r << 16) + (g << 8) + b);
+					b = dithered[idx * channelCount + 2],
+					a = rawData.data[idx * channelCount + 3];
+				const ind = a == 0 ? -4 : colors2.indexOf((r << 16) + (g << 8) + b);
 				if (ind == -1) {
 					console.warn("Inexact RGB detected!", r, g, b);
 					const col = nearestColor([ r, g, b ]);
