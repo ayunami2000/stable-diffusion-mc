@@ -931,12 +931,12 @@ cmds.size = cmds.sz = {
 			}
 			running = true;
 			await iterateClients(async c => {
-				killMaps(c);
+				await killMaps(c);
 			}, "play");
 			setSize(sz);
 			await iterateClients(async c => {
-				setMap(c, false, true);
-				spawnMaps(c);
+				await setMap(c, false, true);
+				await spawnMaps(c);
 			}, "play");
 			running = false;
 			broadcast("\u00A79Size has been set to \u00A73" + size.slice(0, 2).join("x"));
