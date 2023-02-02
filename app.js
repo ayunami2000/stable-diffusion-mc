@@ -1,4 +1,23 @@
 const settings = require("./settings.json");
+const sizes = [
+	[ 768, 768 ],
+	[ 1280, 768 ],
+	[ 768, 1280 ],
+	[ 512, 512 ],
+	[ 896, 512 ],
+	[ 512, 896 ]
+];
+const size = [];
+function setSize(i) {
+	size.length = 0;
+	size.push(...sizes[i]);
+	size.push(size[0] / 128);
+	size.push(size[1] / 128);
+	size.push(size[2] * size[3]);
+}
+setSize(settings.defaultSize);
+
+let settingMap = 0;
 
 const readline = require("readline");
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -454,8 +473,8 @@ let lastImgJpeg = null;
 const jpegRes = [];
 const blankImg = sharp({
 	create: {
-		width: settings.wide ? 1024 : 768,
-		height: settings.wide ? 640 : 768,
+		width: size[0],
+		height: size[1],
 		channels: 3,
 		background: { r: 0, g: 0, b: 0 }
 	}
@@ -727,9 +746,7 @@ server.on("login", function(client) {
 	}
 	setMap(client);
 	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
-	for (let i = 0; i < (settings.wide ? 40 : 36); i++) {
-		spawnMap(client, i);
-	}
+	spawnMaps(client);
 	client.on("pick_item", function(data) {
 		giveMap(client);
 	});
@@ -889,6 +906,43 @@ if (openAiToken != null && openAiToken != "") {
 		}
 	};
 }
+
+cmds.size = cmds.sz = {
+	main: "size",
+	desc: "Change the size of the image.",
+	usage: "[0-5]",
+	run: async function(args, client) {
+		if (args.length > 0) {
+			if (running) {
+				sendMessage(client, "\u00A79Error: Currently generating!");
+				return;
+			}
+			const sz = +args[0];
+			if (isNaN(sz) || sz < 0 || sz >= sizes.length) {
+				sendMessage(client, "\u00A79Error: Invalid size!");
+				return;
+			}
+			if (sizes[sz][0] == size[0] && sizes[sz][1] == size[1]) {
+				sendMessage(client, "\u00A79Error: That size is already set!");
+				return;
+			}
+			while (settingMap > 0) {
+				await sleep(50);
+			}
+			await iterateClients(async c => {
+				killMaps(c);
+			}, "play");
+			setSize(sz);
+			await iterateClients(async c => {
+				setMap(c, false, true);
+				spawnMaps(c);
+			}, "play");
+			broadcast("\u00A79Size has been set to \u00A73" + size.slice(0, 2).join("x"));
+		} else {
+			sendMessage(client, "\u00A79Current size: \u00A73" + size.slice(0, 2).join("x") + "\n\u00A79Available sizes: \u00A73" + sizes.map((s, i) => i + "\u00A79: \u00A73" + s.join("x")).join("\u00A79, \u00A73"));
+		}
+	}
+};
 
 cmds.songs = cmds.song = cmds.s = {
 	main: "songs",
@@ -1238,68 +1292,80 @@ async function getModelListText() {
 	return res;
 }
 
-async function spawnMap(client, i) {
-	if (client.state != "play") return;
-	const x = Math.floor(i / (settings.wide ? 5 : 6));
-	const y = i % (settings.wide ? 5 : 6);
-	client.write("spawn_entity", {
-		entityId: 1 + i,
-		objectUUID: uuidv4(),
-		type: getItemFrameId(client.version),
-		x: (settings.wide ? 3.5 : 2.5) - x,
-		y: (settings.wide ? 403 : 403.5) - y,
-		z: 5,
-		pitch: -128,
-		yaw: 0,
-		headPitch: 0,
-		objectData: 2,
-		velocityX: 0,
-		velocityY: 0,
-		velocityZ: 0
-	});
-	client.write("entity_metadata", {
-		entityId: 1 + i,
-		metadata: [
-			{
-				key: 8,
-				type: client.version <= 760 ? 6 : 7,
-				value: {
-					present: true,
-					itemId: getFilledMapId(client.version),
-					itemCount: 1,
-					nbtData: {
-						type: "compound",
-						name: "",
-						value: {
-							map: {
-								type: "int",
-								value: i
+async function spawnMaps(client) {
+	for (let i = 0; i < size[4]; i++) {
+		const x = Math.floor(i / size[3]);
+		const y = i % size[3];
+		client.write("spawn_entity", {
+			entityId: 1 + i,
+			objectUUID: uuidv4(),
+			type: getItemFrameId(client.version),
+			x: ((size[2] / 2) - 0.5) - x,
+			y: ((size[3] / 2) + 400.5) - y,
+			z: 5,
+			pitch: -128,
+			yaw: 0,
+			headPitch: 0,
+			objectData: 2,
+			velocityX: 0,
+			velocityY: 0,
+			velocityZ: 0
+		});
+		client.write("entity_metadata", {
+			entityId: 1 + i,
+			metadata: [
+				{
+					key: 8,
+					type: client.version <= 760 ? 6 : 7,
+					value: {
+						present: true,
+						itemId: getFilledMapId(client.version),
+						itemCount: 1,
+						nbtData: {
+							type: "compound",
+							name: "",
+							value: {
+								map: {
+									type: "int",
+									value: i
+								}
 							}
 						}
 					}
 				}
-			}
-		]
+			]
+		});
+	}
+}
+
+async function killMaps(client) {
+	if (client.state != "play") return;
+	client.write("entity_destroy", {
+		entityIds: Array(size[4]).fill(0).map((e, i) => 1 + i)
 	});
 }
 
 let lastMapD = null;
 const lastMapDs = [];
 
-async function setMap(url, fin) {
+async function setMap(url, fin, regen) {
+	settingMap++;
 	if (url == null) {
 		await sleep(50);
-		return await setMap(lastImg);
+		settingMap--;
+		return await setMap(lastImg, false, regen);
 	}
 	if (url instanceof Object && "version" in url) {
-		if (lastMapD == null) {
-			return await setMap(lastImg);
+		if (lastMapD == null || regen) {
+			settingMap--;
+			return await setMap(lastImg, false, regen);
 		}
 		url.write("map", lastMapD);
 		giveMap(url);
-		for (let i = 0; i < (settings.wide ? 40 : 36); i++) {
+		for (let i = 0; i < size[4]; i++) {
 			url.write("map", lastMapDs[i]);
 		}
+		settingMap--;
 		return;
 	}
 	if (typeof url == "string") {
@@ -1344,6 +1410,7 @@ async function setMap(url, fin) {
 			writeJpegFrame(res, lastImgJpeg);
 		}
 	} catch (e) {
+		settingMap--;
 		return;
 	}
 	const rawData2 = await img.clone().resize(128, 128, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true });
@@ -1369,7 +1436,7 @@ async function setMap(url, fin) {
 		}
 	}
 	const d = {
-		itemDamage: 63,
+		itemDamage: 32767,
 		scale: 4,
 		locked: false,
 		columns: 128,
@@ -1383,11 +1450,11 @@ async function setMap(url, fin) {
 		c.write("map", d);
 		giveMap(c);
 	}, "play");
-	if (lastMapDs.length == 0 || (fin || !settings.onlyBigScreenFinal)) {
-		const rawData = await img.resize(settings.wide ? 1024 : 768, settings.wide ? 640 : 768, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true });
+	if (lastMapDs.length == 0 || regen || (fin || !settings.onlyBigScreenFinal)) {
+		const rawData = await img.resize(size[0], size[1], { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true });
 		const dithered = await ditherImg(opts.dither, rawData, progressXp);
 		const channelCount = dithered.length / (rawData.info.width * rawData.info.height);
-		const buffers = Array(settings.wide ? 40 : 36).fill(0).map(() => []);
+		const buffers = Array(size[4]).fill(0).map(() => []);
 		for (let x = 0; x < rawData.info.height; x++) {
 			for (let y = 0; y < rawData.info.width; y++) {
 				const idx = x * rawData.info.width + y;
@@ -1395,7 +1462,7 @@ async function setMap(url, fin) {
 					g = dithered[idx * channelCount + 1],
 					b = dithered[idx * channelCount + 2],
 					a = rawData.data[idx * channelCount + 3];
-				const ind = a == 0 ? -4 : colors2.indexOf((r << 16) + (g << 8) + b);
+				const ind = a == 0 ? 115 : colors2.indexOf((r << 16) + (g << 8) + b);
 				if (ind == -1) {
 					console.warn("Inexact RGB detected!", r, g, b);
 					const col = nearestColor([ r, g, b ]);
@@ -1403,11 +1470,11 @@ async function setMap(url, fin) {
 					g = col[1];
 					b = col[2];
 				}
-				buffers[Math.floor(x / 128) + Math.floor(y / 128) * (settings.wide ? 5 : 6)].push(4 + ind);
+				buffers[Math.floor(x / 128) + Math.floor(y / 128) * size[3]].push(4 + ind);
 			}
 		}
 		lastMapDs.length = 0;
-		for (let i = 0; i < (settings.wide ? 40 : 36); i++) {
+		for (let i = 0; i < size[4]; i++) {
 			const d = {
 				itemDamage: i,
 				scale: 4,
@@ -1450,6 +1517,7 @@ async function setMap(url, fin) {
 		}, "play");
 	}
 	progressXp(-1);
+	settingMap--;
 }
 const loadingText = "Loading...";
 let loadingCycle = 0;
@@ -1517,7 +1585,7 @@ function giveMap(client) {
 				value: {
 					map: {
 						type: "int",
-						value: 63
+						value: 32767
 					}
 				}
 			}
@@ -1530,8 +1598,8 @@ async function render(currOpts) {
 	const d = {
 		active_tags: [],
 		guidance_scale: 12,
-		width: settings.wide ? 1024 : 768,
-		height: settings.wide ? 640 : 768,
+		width: size[0],
+		height: size[1],
 		negative_prompt: currOpts.negPrompt,
 		num_inference_steps: 28,
 		num_outputs: 1,
