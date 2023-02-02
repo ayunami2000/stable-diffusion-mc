@@ -929,6 +929,7 @@ cmds.size = cmds.sz = {
 			while (settingMap > 0) {
 				await sleep(50);
 			}
+			running = true;
 			await iterateClients(async c => {
 				killMaps(c);
 			}, "play");
@@ -937,6 +938,7 @@ cmds.size = cmds.sz = {
 				setMap(c, false, true);
 				spawnMaps(c);
 			}, "play");
+			running = false;
 			broadcast("\u00A79Size has been set to \u00A73" + size.slice(0, 2).join("x"));
 		} else {
 			sendMessage(client, "\u00A79Current size: \u00A73" + size.slice(0, 2).join("x") + "\n\u00A79Available sizes: \u00A73" + sizes.map((s, i) => i + "\u00A79: \u00A73" + s.join("x")).join("\u00A79, \u00A73"));
