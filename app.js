@@ -5,60 +5,60 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 
 const soundIds = {
 	761: {
-		BANJO: 841 + 7,
-		BASEDRUM: 826 + 7,
-		BASS: 827 + 7,
-		BELL: 828 + 7,
-		BIT: 840 + 7,
-		CHIME: 829 + 7,
-		COW_BELL: 838 + 7,
-		DIDGERIDOO: 839 + 7,
-		FLUTE: 830 + 7,
-		GUITAR: 831 + 7,
-		HARP: 832 + 7,
-		HAT: 833 + 7,
-		IRON_XYLOPHONE: 837 + 7,
-		PLING: 834 + 7,
-		SNARE: 835 + 7,
-		XYLOPHONE: 836 + 7,
-		ARROW_HIT_PLAYER: 67
+		BANJO: 849,
+		BASEDRUM: 834,
+		BASS: 835,
+		BELL: 836,
+		BIT: 848,
+		CHIME: 837,
+		COW_BELL: 846,
+		DIDGERIDOO: 847,
+		FLUTE: 838,
+		GUITAR: 839,
+		HARP: 840,
+		HAT: 841,
+		IRON_XYLOPHONE: 845,
+		PLING: 842,
+		SNARE: 843,
+		XYLOPHONE: 844,
+		ARROW_HIT_PLAYER: 68
 	},
 	760: {
-		BANJO: 776 + 7,
-		BASEDRUM: 761 + 7,
-		BASS: 762 + 7,
-		BELL: 763 + 7,
-		BIT: 775 + 7,
-		CHIME: 764 + 7,
-		COW_BELL: 773 + 7,
-		DIDGERIDOO: 774 + 7,
-		FLUTE: 765 + 7,
-		GUITAR: 766 + 7,
-		HARP: 767 + 7,
-		HAT: 768 + 7,
-		IRON_XYLOPHONE: 772 + 7,
-		PLING: 769 + 7,
-		SNARE: 770 + 7,
-		XYLOPHONE: 771 + 7,
+		BANJO: 783,
+		BASEDRUM: 768,
+		BASS: 769,
+		BELL: 770,
+		BIT: 782,
+		CHIME: 771,
+		COW_BELL: 780,
+		DIDGERIDOO: 781,
+		FLUTE: 772,
+		GUITAR: 773,
+		HARP: 774,
+		HAT: 775,
+		IRON_XYLOPHONE: 779,
+		PLING: 776,
+		SNARE: 777,
+		XYLOPHONE: 778,
 		ARROW_HIT_PLAYER: 67
 	},
 	759: {
-		BANJO: 776 + 7,
-		BASEDRUM: 761 + 7,
-		BASS: 762 + 7,
-		BELL: 763 + 7,
-		BIT: 775 + 7,
-		CHIME: 764 + 7,
-		COW_BELL: 773 + 7,
-		DIDGERIDOO: 774 + 7,
-		FLUTE: 765 + 7,
-		GUITAR: 766 + 7,
-		HARP: 767 + 7,
-		HAT: 768 + 7,
-		IRON_XYLOPHONE: 772 + 7,
-		PLING: 769 + 7,
-		SNARE: 770 + 7,
-		XYLOPHONE: 771 + 7,
+		BANJO: 783,
+		BASEDRUM: 768,
+		BASS: 769,
+		BELL: 770,
+		BIT: 782,
+		CHIME: 771,
+		COW_BELL: 780,
+		DIDGERIDOO: 781,
+		FLUTE: 772,
+		GUITAR: 773,
+		HARP: 774,
+		HAT: 775,
+		IRON_XYLOPHONE: 779,
+		PLING: 776,
+		SNARE: 777,
+		XYLOPHONE: 778,
 		ARROW_HIT_PLAYER: 67
 	}
 };
@@ -1312,10 +1312,16 @@ function cycleLoading() {
 function progress(i, t) {
 	const m = (!i && !t) ? JSON.stringify(cycleLoading()) : JSON.stringify("\u00A73" + i + "\u00A79 / \u00A73" + t + "\u00A79 (\u00A73" + Math.round(i / t * 100) + "%\u00A79)");
 	iterateClients(async c => {
-		c.write("system_chat", {
-			content: m,
-			isActionBar: true
-		});
+		if (c.version <= 759) {
+			c.write("action_bar", {
+				text: m
+			});
+		} else {
+			c.write("system_chat", {
+				content: m,
+				isActionBar: true
+			});
+		}
 	}, "play");
 }
 
