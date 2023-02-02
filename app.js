@@ -576,6 +576,19 @@ const options = {
 				});
 			}
 		}
+		if (currSong != null) {
+			r.players.sample.push({
+				name: "\u00A79\u00A7nNow playing",
+				id: "00000000-0000-0000-0000-000000000000"
+			});
+			p = currSong.match(/.{1,24}/g);
+			for (const pp of p) {
+				r.players.sample.push({
+					name: "\u00A73" + pp,
+					id: "00000000-0000-0000-0000-000000000000"
+				});
+			}
+		}
 		r.favicon = "data:image/png;base64," + Buffer.from(lastIcon).toString("base64");
 		return r;
 	}/*,
