@@ -934,8 +934,10 @@ cmds.size = cmds.sz = {
 				await killMaps(c);
 			}, "play");
 			setSize(sz);
+			let b = true;
 			await iterateClients(async c => {
-				await setMap(c, false, true);
+				await setMap(c, false, b);
+				if (b) b = false;
 				await spawnMaps(c);
 			}, "play");
 			running = false;
