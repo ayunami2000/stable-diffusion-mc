@@ -519,16 +519,19 @@ const options = {
 	hideErrors: true,
 	validateChannelProtocol: false,
 	beforePing: r => {
-		r.players.sample.push({
-			name: "\u00A79\u00A7nPrompt",
-			id: "00000000-0000-0000-0000-000000000000"
-		});
-		let p = opts.prompt.match(/.{1,24}/g);
-		for (const pp of p) {
+		let p;
+		if (opts.prompt != "") {
 			r.players.sample.push({
-				name: "\u00A73" + pp,
+				name: "\u00A79\u00A7nPrompt",
 				id: "00000000-0000-0000-0000-000000000000"
 			});
+			p = opts.prompt.match(/.{1,24}/g);
+			for (const pp of p) {
+				r.players.sample.push({
+					name: "\u00A73" + pp,
+					id: "00000000-0000-0000-0000-000000000000"
+				});
+			}
 		}
 		if (opts.negPrompt != "") {
 			r.players.sample.push({
