@@ -414,7 +414,7 @@ const ditherAlgos = [
 ];
 
 const quantizerThreeSierra = new imageQ.image.ErrorDiffusionArray(
-	new imageQ.distance.Euclidean(),
+	new imageQ.distance.EuclideanBT709(),
 	imageQ.image.ErrorDiffusionArrayKernel.FloydSteinberg
 );
 // ThreeSierra
@@ -458,7 +458,7 @@ async function ditherImg(quant, rawData, progressCallback) {
 		return out.toUint8Array();
 	} else {
 		const d = {
-			colorDistanceFormula: "euclidean",
+			colorDistanceFormula: "euclidean-bt709",
 			quantization: quant
 		};
 		if (progressCallback) d.onProgress = progressCallback;
