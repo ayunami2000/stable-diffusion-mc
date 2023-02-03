@@ -471,23 +471,34 @@ let lastIcon = null;
 let lastImg = null;
 let lastImgJpeg = null;
 const jpegRes = [];
-const blankImg = sharp({
-	create: {
-		width: size[0],
-		height: size[1],
-		channels: 3,
-		background: { r: 0, g: 0, b: 0 }
-	}
-});
-blankImg.clone().ensureAlpha().resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(b => {
-	lastIcon = b;
-});
-blankImg.png().toBuffer().then(b => {
-	lastImg = b;
-});
-blankImg.jpeg().toBuffer().then(b => {
-	lastImgJpeg = b;
-});
+function blankImgs() {
+	const blankImg = sharp({
+		create: {
+			width: size[0],
+			height: size[1],
+			channels: 3,
+			background: { r: 0, g: 0, b: 0 }
+		}
+	});
+	blankImg.clone().ensureAlpha().resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer().then(b => {
+		lastIcon = b;
+	});
+	blankImg.png().toBuffer().then(b => {
+		lastImg = b;
+	});
+	blankImg.jpeg().toBuffer().then(b => {
+		lastImgJpeg = b;
+		for (const res of jpegRes) {
+			if (res.closed) {
+				jpegRes.splice(jpegRes.indexOf(res), 1);
+				continue;
+			}
+			writeJpegFrame(res, lastImgJpeg);
+			writeJpegFrame(res, lastImgJpeg);
+		}
+	});
+}
+blankImgs();
 
 function writeJpegFrame(res, img) {
 	res.write("--" + mjpegBoundary + "\r\n");
@@ -1042,12 +1053,13 @@ cmds.cancel = cmds.c = {
 
 cmds.clear = cmds.cl = {
 	main: "clear",
-	desc: "Clear the image in-game.",
+	desc: "Clear the image.",
 	usage: "",
 	run: async function(args, client) {
 		while (settingMap > 0) {
 			await sleep(50);
 		}
+		blankImgs();
 		await iterateClients(async c => {
 			await setMap(c, true, true);
 		}, "play");
