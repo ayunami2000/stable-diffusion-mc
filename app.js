@@ -930,14 +930,13 @@ cmds.size = cmds.sz = {
 				await sleep(50);
 			}
 			running = true;
-			await iterateClients(async c => {
-				await killMaps(c);
-			}, "play");
+			const mapCount = size[4];
 			setSize(sz);
 			let b = true;
 			await iterateClients(async c => {
 				await setMap(c, false, b);
 				if (b) b = false;
+				await killMaps(c, mapCount);
 				await spawnMaps(c);
 			}, "play");
 			running = false;
@@ -1028,9 +1027,31 @@ cmds.render = cmds.r = {
 			sendMessage(client, "\u00A79Error: Currently generating!");
 			return;
 		}
-		running = true;
 		await render(opts);
+	}
+};
+
+cmds.cancel = cmds.c = {
+	main: "cancel",
+	desc: "Cancel rendering.",
+	usage: "",
+	run: async function(args, client) {
 		running = false;
+	}
+};
+
+cmds.clear = cmds.cl = {
+	main: "clear",
+	desc: "Clear the image in-game.",
+	usage: "",
+	run: async function(args, client) {
+		while (settingMap > 0) {
+			await sleep(50);
+		}
+		await iterateClients(async c => {
+			await setMap(c, true, true);
+		}, "play");
+		broadcast("\u00A79Image has been cleared!");
 	}
 };
 
@@ -1139,7 +1160,7 @@ cmds.model = cmds.m = {
 	usage: "[model|reset|r]",
 	run: async function(args, client) {
 		if (args.length == 0) {
-			sendMessage(client, "\u00A79Current model: \u00A73" + opts.model + await getModelListText());
+			sendMessage(client, "\u00A79Current model: \u00A73" + opts.model + "\n\u00A79Available models: \u00A73" + (await getModels()).options["stable-diffusion"].join("\u00A79, \u00A73"));
 		} else {
 			if (running) {
 				sendMessage(client, "\u00A79Error: Currently generating!");
@@ -1165,11 +1186,11 @@ cmds.model = cmds.m = {
 
 cmds.vae = cmds.v = {
 	main: "vae",
-	desc: "List models and set the VAE.",
+	desc: "List VAEs and set the VAE.",
 	usage: "[VAE|none|n|reset|r]",
 	run: async function(args, client) {
 		if (args.length == 0) {
-			sendMessage(client, "\u00A79Current VAE: \u00A73" + opts.vae + await getModelListText());
+			sendMessage(client, "\u00A79Current VAE: \u00A73" + opts.vae + "\n\u00A79Available VAEs: \u00A73" + (await getModels()).options.vae.join("\u00A79, \u00A73"));
 		} else {
 			if (running) {
 				sendMessage(client, "\u00A79Error: Currently generating!");
@@ -1200,11 +1221,11 @@ cmds.vae = cmds.v = {
 
 cmds.hypernetwork = cmds.hypnet = {
 	main: "hypernetwork",
-	desc: "List models and set the hypernetwork.",
+	desc: "List hypernetworks and set the hypernetwork.",
 	usage: "[hypernetwork|none|n|reset|r]",
 	run: async function(args, client) {
 		if (args.length == 0) {
-			sendMessage(client, "\u00A79Current hypernetwork: \u00A73" + opts.hypnet + await getModelListText());
+			sendMessage(client, "\u00A79Current hypernetwork: \u00A73" + opts.hypnet + "\n\u00A79Available hypernetworks: \u00A73" + (await getModels()).options.hypernetwork.join("\u00A79, \u00A73"));
 		} else {
 			if (running) {
 				sendMessage(client, "\u00A79Error: Currently generating!");
@@ -1286,16 +1307,6 @@ async function getModels() {
 	return modelsCache;
 }
 
-async function getModelListText() {
-	const models = await getModels();
-	let res = "\n\u00A79Available models:\n";
-	for (const cat in models.options) {
-		res += "\u00A79\u00BB \u00A73" + cat + "\u00A79: \u00A73" + models.options[cat].join("\u00A79, \u00A73") + "\n";
-	}
-	res = res.slice(0, res.length - 1);
-	return res;
-}
-
 async function spawnMaps(client) {
 	for (let i = 0; i < size[4]; i++) {
 		const x = Math.floor(i / size[3]);
@@ -1342,25 +1353,55 @@ async function spawnMaps(client) {
 	}
 }
 
-async function killMaps(client) {
+async function killMaps(client, mapCount) {
 	if (client.state != "play") return;
 	client.write("entity_destroy", {
-		entityIds: Array(size[4]).fill(0).map((e, i) => 1 + i)
+		entityIds: Array(mapCount).fill(0).map((e, i) => 1 + i)
 	});
 }
 
-let lastMapD = null;
+const blackMap = Buffer.from(Array(128 * 128).fill(207)); // 119
+
+let lastMapD = {
+	itemDamage: 32767,
+	scale: 4,
+	locked: false,
+	columns: 128,
+	rows: 128,
+	x: 0,
+	y: 0,
+	data: blackMap
+};
 const lastMapDs = [];
+for (let i = 0; i < size[4]; i++) {
+	lastMapDs.push({
+		itemDamage: i,
+		scale: 4,
+		locked: false,
+		columns: 128,
+		rows: 128,
+		x: 0,
+		y: 0,
+		data: blackMap
+	});
+}
 
 async function setMap(url, fin, regen) {
 	settingMap++;
+	if (fin && regen) {
+		regen = false;
+		lastMapD.data = blackMap;
+		for (let i = 0; i < lastMapDs.length; i++) {
+			lastMapDs[i].data = blackMap;
+		}
+	}
 	if (url == null) {
 		await sleep(50);
 		settingMap--;
 		return await setMap(lastImg, false, regen);
 	}
 	if (url instanceof Object && "version" in url) {
-		if (lastMapD == null || regen) {
+		if (regen) {
 			settingMap--;
 			return await setMap(lastImg, false, regen);
 		}
@@ -1454,7 +1495,7 @@ async function setMap(url, fin, regen) {
 		c.write("map", d);
 		giveMap(c);
 	}, "play");
-	if (lastMapDs.length == 0 || regen || (fin || !settings.onlyBigScreenFinal)) {
+	if (regen || (fin || !settings.onlyBigScreenFinal)) {
 		const rawData = await img.resize(size[0], size[1], { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).raw().toBuffer({ resolveWithObject: true });
 		const dithered = await ditherImg(opts.dither, rawData, progressXp);
 		const channelCount = dithered.length / (rawData.info.width * rawData.info.height);
@@ -1466,7 +1507,7 @@ async function setMap(url, fin, regen) {
 					g = dithered[idx * channelCount + 1],
 					b = dithered[idx * channelCount + 2],
 					a = rawData.data[idx * channelCount + 3];
-				const ind = a == 0 ? 115 : colors2.indexOf((r << 16) + (g << 8) + b);
+				const ind = a == 0 ? (blackMap[0] - 4) : colors2.indexOf((r << 16) + (g << 8) + b);
 				if (ind == -1) {
 					console.warn("Inexact RGB detected!", r, g, b);
 					const col = nearestColor([ r, g, b ]);
@@ -1598,6 +1639,7 @@ function giveMap(client) {
 }
 const sleep = async ms => await new Promise(r => setTimeout(r, ms));
 async function render(currOpts) {
+	running = true;
 	broadcast("\u00A79Starting generation!");
 	const d = {
 		active_tags: [],
@@ -1636,6 +1678,11 @@ async function render(currOpts) {
 		method: "POST"
 	})).json();
 	await sleep(500);
+	if (!running) {
+		clearInterval(loadingInterval);
+		broadcast("\u00A79Stopped generating!");
+		return;
+	}
 	let res2 = null;
 	let lastProgress = null;
 	let queue = [];
@@ -1672,15 +1719,22 @@ async function render(currOpts) {
 		} else {
 			res2 = null;
 		}
+		if (!running) {
+			if (loadingInterval != -1) {
+				clearInterval(loadingInterval);
+			}
+			broadcast("\u00A79Stopped generating!");
+			return;
+		}
 	}
 	progress(lastProgress[1], lastProgress[1]);
 	progressSound(lastProgress[1], lastProgress[1]);
 	if (loadingInterval != -1) {
 		clearInterval(loadingInterval);
-		loadingInterval = -1;
 	}
 	await setMap(res2.output[0].data, true);
 	broadcast("\u00A79Done generating!");
+	running = false;
 }
 
 const shutdown = async function() {
