@@ -33,7 +33,6 @@
 				}
 			}
 			.title {
-				font-family: sans-serif;
 				color: white;
 				position: fixed;
 				top: 0;
@@ -44,6 +43,7 @@
 				font-weight: bold;
 				font-size: 1.25em;
 				line-height: 2em;
+				font-family: sans-serif;
 			}
 			.title a:not(.link) {
 				color: white;
@@ -62,6 +62,10 @@
 			}
 			.bigimgdl:hover + .handmap, .bigimgdl:hover + .handmap + .handmapimg {
 				bottom: -50vh;
+				filter: brightness(60%) blur(1px);
+			}
+			.bigimgdl:hover + .handmap + .handmapimg + .chat {
+				left: calc(2em - 100vmin);
 				filter: brightness(60%) blur(1px);
 			}
 			.handmapimg, .handmap {
@@ -89,9 +93,56 @@
 				height: 75vmin;
 				object-fit: contain;
 			}
+			.chat {
+				position: fixed;
+				bottom: 1.25em;
+				left: 0;
+				width: calc(100vmin - 1em);
+				height: calc(50vh - 1em);
+				line-height: 1.25em;
+				font-family: "Graph-35-pix", sans-serif;
+				background: rgba(0, 0, 0, 0.5);
+				padding: 0.5em;
+				transition: left 250ms, filter 250ms;
+				/*overflow-y: scroll;*/
+			}
+			@font-face {
+				font-family: "Graph-35-pix";
+				src: url("Graph-35-pix.ttf");
+			}
+			.chatbox {
+				position: fixed;
+				bottom: 0;
+				left: 0;
+				width: calc(100vmin - 1em);
+				height: 0.5em;
+				line-height: 1.25em;
+				background: none;
+				border: 0;
+				outline: 0;
+				background: rgba(0, 0, 0, 0.5);
+				border-radius: 0px;
+				padding: 0.5em;
+				font-family: "Graph-35-pix", sans-serif;
+				color: white;
+				transition: left 250ms, filter 250ms;
+			}
+			.actionbar {
+				position: fixed;
+				bottom: 2.5em;
+				text-align: center;
+				width: 100vw;
+				height: 1.25em;
+				line-height: 1.25em;
+				font-family: "Graph-35-pix", sans-serif;
+				color: white;
+				pointer-events: none;
+				touch-action: none;
+			}
 		</style>
 	</head>
 	<body>
+		<!-- made by ayunami2000 :D -->
 		<span class="title">
 			<a class="link" href="https://github.com/ayunami2000/stable-diffusion-mc#credits" target="_blank">Credits</a>
 			<a href="https://github.com/ayunami2000/stable-diffusion-mc" target="_blank">Stable Diffusion MC</a>
@@ -100,6 +151,10 @@
 		<a class="bigimgdl" href="download"><img class="bigimg" src="mjpeg"/></a>
 		<img class="handmap" src="map_background.png"/>
 		<img class="handmapimg" src="mjpeg"/>
+		<div class="chat"></div>
+		<input type="text" class="chatbox" placeholder="Type here to chat"/>
+		<div class="actionbar"></div>
+		<script type="text/javascript" src="MinecraftColorCodes.min.js"></script>
 		<script>
 			const fard = 256;
 			document.documentElement.style.setProperty("--fard", fard + "px");
@@ -109,6 +164,110 @@
 			};
 			window.addEventListener("resize", jeez);
 			jeez();
+
+			const chat = document.getElementsByClassName("chat")[0];
+			const ws = new WebSocket("ws" + window.location.href.slice(4));
+			const maxChats = 64;
+			function trimChat() {
+				const allBr = [ ...chat.children ].filter(c => c.tagName == "BR");
+				if (allBr.length >= maxChats) {
+					while (chat.removeChild(chat.children[0]) != allBr[allBr.length - maxChats]) {
+						//
+					}
+				}
+			}
+			let sentInitial = false;
+			function spaceChat() {
+				if (sentInitial) {
+					chat.appendChild(document.createElement("br"));
+				} else {
+					sentInitial = true;
+				}
+			}
+			function sendChat(msg) {
+				spaceChat();
+				chat.appendChild(msg.replaceColorCodes());
+				trimChat();
+				chat.scrollTop = chat.scrollHeight;
+			}
+			const actionBar = document.getElementsByClassName("actionbar")[0];
+			let actionBarTimeout = -1;
+			function setActionBar(msg) {
+				if (actionBarTimeout != -1) {
+					clearTimeout(actionBarTimeout);
+				}
+				actionBar.replaceChildren(msg.replaceColorCodes());
+				actionBar.style.transition = "opacity 0ms";
+				actionBar.style.opacity = 1;
+				actionBarTimeout = setTimeout(() => {
+					actionBar.style.transition = "opacity 500ms";
+					actionBar.style.opacity = 0;
+				}, 2000);
+			}
+			const AudioContext = window.AudioContext || window.webkitAudioContext;
+			const audioContext = new AudioContext();
+			function loadSound(url) {
+				return fetch(url).then(r => r.arrayBuffer()).then(b => audioContext.decodeAudioData(b));
+			}
+			function playSound(sound, volume, pitch, panning) {
+				const source = audioContext.createBufferSource();
+				const gainNode = audioContext.createGain();
+				const panNode = audioContext.createStereoPanner();
+				panNode.pan.value = panning;
+				gainNode.gain.value = volume * 0.5;
+				source.buffer = sounds[sound];
+				source.playbackRate.value = pitch;
+				source.connect(panNode);
+				panNode.connect(gainNode);
+				gainNode.connect(audioContext.destination);
+				source.start(0);
+			}
+			const sounds = {};
+			
+			const soundNames = [
+				"BANJO",
+				"BASEDRUM",
+				"BASS",
+				"BELL",
+				"BIT",
+				"CHIME",
+				"COW_BELL",
+				"DIDGERIDOO",
+				"FLUTE",
+				"GUITAR",
+				"HARP",
+				"HAT",
+				"IRON_XYLOPHONE",
+				"PLING",
+				"SNARE",
+				"XYLOPHONE",
+				"ARROW_HIT_PLAYER"
+			];
+			for (const soundName of soundNames) {
+				loadSound("sound?" + soundName).then(sound => sounds[soundName] = sound);
+			}
+			ws.onmessage = function(event) {
+				const packet = JSON.parse(event.data);
+				if (packet.type == "chat") {
+					sendChat(packet.data);
+				} else if (packet.type == "action_bar") {
+					setActionBar(packet.data);
+				} else if (packet.type == "sound_effect") {
+					playSound(packet.data.sound, packet.data.volume, packet.data.pitch, packet.data.panning);
+				}
+			};
+			ws.onclose = function() {
+				sendChat("\u00A79Connection closed.");
+			};
+			const chatBox = document.getElementsByClassName("chatbox")[0];
+			chatBox.addEventListener("keydown", function(event) {
+				if (event.key == "Enter") {
+					ws.send(chatBox.value);
+					chatBox.value = "";
+				} else if (event.key == "Tab") {
+					event.preventDefault();
+				}
+			});
 		</script>
 	</body>
 </html>

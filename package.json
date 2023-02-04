@@ -8,6 +8,7 @@
     "mime-types": "^2.1.35",
     "minecraft-protocol": "^1.40.3",
     "sharp": "^0.31.3",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "ws": "^8.12.0"
   }
 }

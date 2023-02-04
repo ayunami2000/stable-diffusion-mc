@@ -81,6 +81,29 @@ const soundIds = {
 		ARROW_HIT_PLAYER: 67
 	}
 };
+const idToSoundLatest = {};
+for (const sound in soundIds[761]) {
+	idToSoundLatest[soundIds[761][sound]] = sound;
+}
+const soundUrls = {
+	BANJO: "https://resources.download.minecraft.net/34/3429a726bdda71c20b84d20fc35693a5eb04f096",
+	BASEDRUM: "https://resources.download.minecraft.net/1a/1afefaa39a53606d2737bab9cb3409350cb2dc9f",
+	BASS: "https://resources.download.minecraft.net/03/037b9fb7f74381f354739d015193dc4a6897f620",
+	BELL: "https://resources.download.minecraft.net/df/dffb5d6066ba89a4d3a609eb0c607606d4a524e2",
+	BIT: "https://resources.download.minecraft.net/03/030a7bf5b32c5b3f821adb35b7601705a45d8420",
+	CHIME: "https://resources.download.minecraft.net/56/562f63e81572019a66cf795cea914ed6910edb53",
+	COW_BELL: "https://resources.download.minecraft.net/a6/a69ab2376207659ed24a427d15997bb7fbcd5286",
+	DIDGERIDOO: "https://resources.download.minecraft.net/31/316d979f27d24b28a43ed4d7cfaf1e8c1f899f7b",
+	FLUTE: "https://resources.download.minecraft.net/a7/a7f05f19c3e553c61deb61e5e8123a82cdbec758",
+	GUITAR: "https://resources.download.minecraft.net/3e/3ea516355b5ec2bef08d9e6aa3ebc6626acb583b",
+	HARP: "https://resources.download.minecraft.net/6b/6b6bae253b1032ce3f3b4fb5816a9a819cac7b59",
+	HAT: "https://resources.download.minecraft.net/fd/fd2b6f745b05a2cf44a4e010f72631de2e5099f6",
+	IRON_XYLOPHONE: "https://resources.download.minecraft.net/10/10d20bc6c141437a898f73ec631e26efaf36f0b8",
+	PLING: "https://resources.download.minecraft.net/20/20d06589bd5ab81a73989bdac8ca59ecd4d66932",
+	SNARE: "https://resources.download.minecraft.net/69/6967f0af60f480e81d32f1f8e5f88ccafec3a40c",
+	XYLOPHONE: "https://resources.download.minecraft.net/b7/b7cf6b6ff19146fae41a39025ab709ea90bcc439",
+	ARROW_HIT_PLAYER: "https://resources.download.minecraft.net/e9/e9833a1512b57bcf88ac4fdcc8df4e5a7e9d701d"
+};
 
 const oldLog = console.log;
 const oldErr = console.error;
@@ -144,6 +167,8 @@ const mc = require("minecraft-protocol");
 const fetch = require("@replit/node-fetch");
 const sharp = require("sharp");
 const fs = require("fs");
+const { WebSocketServer } = require("ws");
+const http = require("http");
 const path = require("path");
 const mime = require("mime-types");
 const NBS = require("@encode42/nbs.js");
@@ -537,6 +562,7 @@ function writeJpegFrame(res, img) {
 
 const files = [];
 let cache = {};
+const soundCache = {};
 
 function throughDirectory(directory) {
   fs.readdirSync(directory).forEach(file => {
@@ -551,8 +577,8 @@ function throughDirectory(directory) {
 
 throughDirectory("web");
 
-require("http").createServer(async (req, res) => {
-	let ur = (req.url.includes("?") ? req.url.slice(0, req.url.indexOf("?")) : req.url).toLowerCase();
+const httpServer = http.createServer(async (req, res) => {
+	let ur = req.url.includes("?") ? req.url.slice(0, req.url.indexOf("?")) : req.url;
 	if (ur.startsWith("/")) ur = ur.slice(1);
 	if (ur == "") ur = "index.html";
 	switch (ur) {
@@ -586,6 +612,24 @@ require("http").createServer(async (req, res) => {
 			res.writeHead(200, h);
 			res.end(lastImg);
 			break;
+		case "sound":
+			if (!req.url.includes("?")) {
+				res.writeHead(404, { "Content-Type": "text/plain" });
+				res.end("404 Not Found");
+				break;
+			}
+			const sound = req.url.slice(req.url.indexOf("?") + 1).toUpperCase();
+			if (!(sound in soundUrls)) {
+				res.writeHead(404, { "Content-Type": "text/plain" });
+				res.end("404 Not Found");
+				break;
+			}
+			res.writeHead(200, { "Content-Type": "audio/ogg" });
+			if (!(sound in soundCache)) {
+				soundCache[sound] = Buffer.from(await (await fetch(soundUrls[sound])).arrayBuffer());
+			}
+			res.end(soundCache[sound]);
+			break;
 		default:
 			if (files.includes(ur)) {
 				res.writeHead(200, { "Content-Type": mime.contentType(ur) });
@@ -598,11 +642,111 @@ require("http").createServer(async (req, res) => {
 				res.end("404 Not Found");
 			}
 	}
-}).listen(8420);
+});
+
+const wss = new WebSocketServer({
+	server: httpServer,
+	clientTracking: true
+});
+
+wss.on("connection", async ws => {
+	ws.on("message", msg => {
+		msg = ("" + msg).trim();
+		if (msg.startsWith("/")) {
+			if (ws.onChatCommand) ws.onChatCommand({ command: msg.slice(1) });
+		} else {
+			if (ws.onChatMessage) ws.onChatMessage({ message: msg });
+		}
+	});
+	ws.on("close", () => {
+		if (ws.onEnd) ws.onEnd();
+	});
+	ws.un = "WebClient#" + Math.floor(Math.random() * 1000);
+	while ([ ...wss.clients ].some(c => c != ws && c.un == ws.un)) {
+		ws.un = "WebClient#" + Math.floor(Math.random() * 1000);
+	}
+	onLogin(await fakeWebClient(ws));
+});
+
+async function fakeWebClient(ws) {
+	while (!ws.un) {
+		await sleep(50);
+	}
+	return {
+		version: 761,
+		username: ws.un,
+		socket: ws._socket,
+		state: "play",
+		end: function(msg) {
+			ws.close(1000, msg);
+		},
+		write: function(name, data) {
+			if (name == "system_chat") {
+				ws.send(JSON.stringify({
+					type: data.isActionBar ? "action_bar" : "chat",
+					data: funnyParser(JSON.parse(data.content))//.replace(/\u00A7./g, "")
+				}));
+			} else if (name == "sound_effect") {
+				ws.send(JSON.stringify({
+					type: "sound_effect",
+					data: {
+						sound: idToSoundLatest[data.soundId],
+						pitch: data.pitch,
+						volume: data.volume,
+						panning: -data.x / 16
+					}
+				}));
+			}
+		},
+		on: function(name, func) {
+			if (name == "chat_message") {
+				ws.onChatMessage = func;
+			} else if (name == "chat_command") {
+				ws.onChatCommand = func;
+			} else if (name == "end") {
+				ws.onEnd = func;
+			}
+		}
+	};
+}
+
+httpServer.listen(8420);
+
+function funnyParser(msgPieces, nesting) {
+	if (!nesting) {
+		nesting = 0;
+	} else if (nesting > 10) {
+		return ""; // lost...
+	}
+	
+	let res = "";
+	
+	if (typeof msgPieces == "string") return msgPieces;
+	if (msgPieces.hasOwnProperty("text")) res += msgPieces.text;
+	if (msgPieces.hasOwnProperty("extra")) {
+		let morePieces = msgPieces.extra;
+		for (let extraPiece of morePieces) {
+			if (typeof extraPiece == "string") {
+				res += extraPiece;
+			} else {
+				res += funnyParser(extraPiece, nesting + 1);
+			}
+		}
+	}
+
+	return res;
+}
 
 const cmds = {};
 
 const sessionId = Date.now();
+
+function pingLine(msg) {
+	return {
+		name: msg,
+		id: "00000000-0000-0000-0000-000000000000"
+	};
+}
 
 const options = {
 	motd: "\u00A79Stable Diffusion \u00A7aMC\n\u00A73by ayunami2000",
@@ -623,81 +767,46 @@ const options = {
 	hideErrors: true,
 	validateChannelProtocol: false,
 	beforePing: r => {
+		r.players.online += wss.clients.size;
 		let p;
 		if (opts.prompt != "") {
-			r.players.sample.push({
-				name: "\u00A79\u00A7nPrompt",
-				id: "00000000-0000-0000-0000-000000000000"
-			});
+			r.players.sample.push(pingLine("\u00A79\u00A7nPrompt"));
 			p = opts.prompt.match(/.{1,24}/g);
 			for (const pp of p) {
-				r.players.sample.push({
-					name: "\u00A73" + pp,
-					id: "00000000-0000-0000-0000-000000000000"
-				});
+				r.players.sample.push(pingLine("\u00A73" + pp));
 			}
 		}
 		if (opts.negPrompt != "") {
-			r.players.sample.push({
-				name: "\u00A79\u00A7nNegative prompt",
-				id: "00000000-0000-0000-0000-000000000000"
-			});
+			r.players.sample.push(pingLine("\u00A79\u00A7nNegative prompt"));
 			p = opts.negPrompt.match(/.{1,24}/g);
 			for (const pp of p) {
-				r.players.sample.push({
-					name: "\u00A73" + pp,
-					id: "00000000-0000-0000-0000-000000000000"
-				});
+				r.players.sample.push(pingLine("\u00A73" + pp));
 			}
 		}
-		r.players.sample.push({
-			name: "\u00A79\u00A7nModel",
-			id: "00000000-0000-0000-0000-000000000000"
-		});
+		r.players.sample.push(pingLine("\u00A79\u00A7nModel"));
 		p = opts.model.match(/.{1,24}/g);
 		for (const pp of p) {
-			r.players.sample.push({
-				name: "\u00A73" + pp,
-				id: "00000000-0000-0000-0000-000000000000"
-			});
+			r.players.sample.push(pingLine("\u00A73" + pp));
 		}
 		if (opts.vae != "") {
-			r.players.sample.push({
-				name: "\u00A79\u00A7nVAE",
-				id: "00000000-0000-0000-0000-000000000000"
-			});
+			r.players.sample.push(pingLine("\u00A79\u00A7nVAE"));
 			p = opts.vae.match(/.{1,24}/g);
 			for (const pp of p) {
-				r.players.sample.push({
-					name: "\u00A73" + pp,
-					id: "00000000-0000-0000-0000-000000000000"
-				});
+				r.players.sample.push(pingLine("\u00A73" + pp));
 			}
 		}
 		if (opts.hypnet != "") {
-			r.players.sample.push({
-				name: "\u00A79\u00A7nHypernetwork",
-				id: "00000000-0000-0000-0000-000000000000"
-			});
+			r.players.sample.push(pingLine("\u00A79\u00A7nHypernetwork"));
 			p = opts.hypnet.match(/.{1,24}/g);
 			for (const pp of p) {
-				r.players.sample.push({
-					name: "\u00A73" + pp,
-					id: "00000000-0000-0000-0000-000000000000"
-				});
+				r.players.sample.push(pingLine("\u00A73" + pp));
 			}
 		}
 		if (currSong != null) {
-			r.players.sample.push({
-				name: "\u00A79\u00A7nNow playing",
-				id: "00000000-0000-0000-0000-000000000000"
-			});
+			r.players.sample.push(pingLine("\u00A79\u00A7nNow playing"));
 			p = currSong.match(/.{1,24}/g);
 			for (const pp of p) {
-				r.players.sample.push({
-					name: "\u00A73" + pp,
-					id: "00000000-0000-0000-0000-000000000000"
-				});
+				r.players.sample.push(pingLine("\u00A73" + pp));
 			}
 		}
 		r.favicon = "data:image/png;base64," + Buffer.from(lastIcon).toString("base64");
@@ -764,8 +873,8 @@ if (settings.defaultSong && settings.defaultSong != "") {
 	});
 }
 
-server.on("login", function(client) {
-	if (server.playerCount > server.maxPlayers) {
+const onLogin = function(client) {
+	if ((server.playerCount + wss.clients.size) > server.maxPlayers) {
 		client.end("\u00A79Server is full!");
 		return;
 	}
@@ -830,7 +939,7 @@ server.on("login", function(client) {
 		addBossBar(client);
 	}
 	setMap(client);
-	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + server.playerCount + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
+	sendMessage(client, "\u00A79Welcome to \u00A73Stable Diffusion \u00A7aMC\u00A79! Do \u00A73/? \u00A79to get started!\nOnline players: \u00A73" + (server.playerCount + wss.clients.size) + " \u00A79/ \u00A73" + server.maxPlayers + "\n\u00A73" + getOnlinePlayers().join("\u00A79, \u00A73") + (currSong == null ? "" : "\n\u00A79Now playing: \u00A73" + currSong));
 	spawnMaps(client);
 	client.on("pick_item", function(data) {
 		giveMap(client);
@@ -839,6 +948,7 @@ server.on("login", function(client) {
 		giveMap(client);
 	});
 	client.on("chat_message", function(data) {
+		if (data.message.trim() == "") return;
 		const b = data.message.replace(/^tf!(l|list|lsit|online|who)/gi, "") != data.message;
 		data.message = data.message.replace(/[\u00A7\u0000-\u001F\u007F-\u009F]/g, "").replace(/&([0-9a-fklmnor])/gi, "\u00A7$1");
 		broadcast("\u00A73" + client.username + " \u00BB \u00A79" + data.message);
@@ -857,7 +967,8 @@ server.on("login", function(client) {
 			sendMessage(client, "\u00A79Error: Invalid command!");
 		}
 	});
-});
+};
+server.on("login", onLogin);
 
 server.on("error", function(error) {
 	console.log("Error:", error);
@@ -873,6 +984,9 @@ async function iterateClients(cb, state, ...args) {
 		if (client == undefined) continue;
 		if (state != null && client.state != state) return;
 		await cb(client, ...args);
+	}
+	for (const wsClient of wss.clients) {
+		await cb(await fakeWebClient(wsClient), ...args);
 	}
 }
 
@@ -896,7 +1010,7 @@ function sendMessage(client, message) {
 }
 
 function getOnlinePlayers() {
-	return Object.values(server.clients).map(c => c.username);
+	return [ ...Object.values(server.clients).map(c => c.username), ...[ ...wss.clients ].map(c => c.un).filter(un => un) ];
 }
 
 let running = false;
@@ -1345,7 +1459,7 @@ cmds.list = cmds.l = cmds.online = cmds["tf!l"] = {
 	desc: "List online players.",
 	usage: "",
 	run: async function(args, client) {
-		sendMessage(client, "\u00A79Online players (\u00A73" + server.playerCount + "\u00A79 / \u00A73" + server.maxPlayers + "\u00A79): \u00A73" + getOnlinePlayers().join("\u00A79, \u00A73"));
+		sendMessage(client, "\u00A79Online players (\u00A73" + (server.playerCount + wss.clients.size) + "\u00A79 / \u00A73" + server.maxPlayers + "\u00A79): \u00A73" + getOnlinePlayers().join("\u00A79, \u00A73"));
 	}
 };
 
