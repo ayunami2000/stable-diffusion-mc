@@ -89,6 +89,8 @@ function consoleBase(log) {
 	return function(...a) {
 		process.stdout.clearLine();
 		process.stdout.cursorTo(0);
+		const ts = new Date().toJSON();
+		process.stdout.write("[" + ts.slice(ts.indexOf("T") + 1, -1) + "] ");
 		log(...a);
 		process.stdout.write("> " + rl.line);
 	};
@@ -142,6 +144,8 @@ const mc = require("minecraft-protocol");
 const fetch = require("@replit/node-fetch");
 const sharp = require("sharp");
 const fs = require("fs");
+const path = require("path");
+const mime = require("mime-types");
 const NBS = require("@encode42/nbs.js");
 const MidiPlayer = require("midi-player-js");
 const {
@@ -470,6 +474,28 @@ const mjpegBoundary = "7b3cc56e5f51db803f790dad720ed50a";
 let lastIcon = null;
 let lastImg = null;
 let lastImgJpeg = null;
+let endSky = null;
+function genEndSky() {
+	const endSkyCols = [ [ 133, 107, 171 ], [ 89, 65, 123 ], [ 69, 51, 96 ], [ 147, 122, 182 ], [ 138, 111, 178 ], [ 97, 71, 135 ], [ 122, 93, 164 ], [ 105, 78, 145 ], [ 82, 60, 113 ], [ 101, 74, 141 ] ];
+	const lastEndSkyCol = [];
+	sharp(Buffer.from(Array(128 * 128 * 3).fill(0).map((_, i) => {
+		const ind = i % 3;
+		if (ind == 0) {
+			lastEndSkyCol.length = 0;
+			lastEndSkyCol.push(...endSkyCols[Math.floor(Math.random() * endSkyCols.length)]);
+		}
+		return lastEndSkyCol[ind];
+	})), {
+		raw: {
+			width: 128,
+			height: 128,
+			channels: 3
+		}
+	}).png().toBuffer().then(b => {
+		endSky = b;
+	});
+}
+genEndSky();
 const jpegRes = [];
 function blankImgs() {
 	const blankImg = sharp({
@@ -509,20 +535,68 @@ function writeJpegFrame(res, img) {
 	res.write("\r\n");
 }
 
-require("http").createServer(async (req, res) => {
-	if (req.url.startsWith("/songs")) {
-		res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-		return res.end(Object.keys(songs).join("\n"));
-	}
-	if (lastImg == null || lastImgJpeg == null) return res.end();
-	if (req.url.startsWith("/mjpeg")) {
-		res.writeHead(200, { "Cache-Control": "no-cache", "Connection": "close", "Content-Type": "multipart/x-mixed-replace; boundary=" + mjpegBoundary, "Pragma": "no-cache" });
-		writeJpegFrame(res, lastImgJpeg);
-		writeJpegFrame(res, lastImgJpeg);
-		jpegRes.push(res);
+const files = [];
+let cache = {};
+
+function throughDirectory(directory) {
+  fs.readdirSync(directory).forEach(file => {
+    const absolute = path.join(directory, file);
+    if (fs.statSync(absolute).isDirectory()) {
+		return throughDirectory(absolute);
 	} else {
-		res.writeHead(200, { "Content-Type": "image/png" });
-		res.end(lastImg);
+		return files.push(absolute.toString().slice(4).replace(/\\/g, "/"));
+	}
+  });
+}
+
+throughDirectory("web");
+
+require("http").createServer(async (req, res) => {
+	let ur = (req.url.includes("?") ? req.url.slice(0, req.url.indexOf("?")) : req.url).toLowerCase();
+	if (ur.startsWith("/")) ur = ur.slice(1);
+	if (ur == "") ur = "index.html";
+	switch (ur) {
+		case "endsky":
+			while (endSky == null) {
+				await sleep(50);
+			}
+			res.writeHead(200, { "Content-Type": "image/png" });
+			res.end(endSky);
+			break;
+		case "songs":
+			res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+			res.end(Object.keys(songs).join("\n"));
+			break;
+		case "mjpeg":
+			while (lastImgJpeg == null) {
+				await sleep(50);
+			}
+			res.writeHead(200, { "Cache-Control": "no-cache", "Connection": "close", "Content-Type": "multipart/x-mixed-replace; boundary=" + mjpegBoundary, "Pragma": "no-cache" });
+			writeJpegFrame(res, lastImgJpeg);
+			writeJpegFrame(res, lastImgJpeg);
+			jpegRes.push(res);
+			break;
+		case "latest":
+		case "download":
+			while (lastImg == null) {
+				await sleep(50);
+			}
+			const h = { "Content-Type": "image/png" };
+			if (ur == "download") h["Content-Disposition"] = "attachment; filename=\"stable-diffusion-mc_" + Date.now() + ".png\"";
+			res.writeHead(200, h);
+			res.end(lastImg);
+			break;
+		default:
+			if (files.includes(ur)) {
+				res.writeHead(200, { "Content-Type": mime.contentType(ur) });
+				if (!(ur in cache)) {
+					cache[ur] = fs.readFileSync("web/" + ur);
+				}
+				res.end(cache[ur]);
+			} else {
+				res.writeHead(404, { "Content-Type": "text/plain" });
+				res.end("404 Not Found");
+			}
 	}
 }).listen(8420);
 
@@ -1710,7 +1784,7 @@ async function render(currOpts) {
 			}
 			if ("output" in res2) {
 				progressSound(...lastProgress);
-				setMap(res2.output[0].path);
+				await setMap(res2.output[0].path);
 			}
 		} else if (lastProgress != null) {
 			progress(...lastProgress);
@@ -1773,6 +1847,11 @@ process.on("SIGINT", shutdown);
 		} else if (args[0] == "updsongs") {
 			updateSongs();
 			console.log("Updated songs!");
+		} else if (args[0] == "updweb") {
+			files.length = 0;
+			cache = {};
+			throughDirectory("web");
+			console.log("Updated website!");
 		} else if (args[0] == "say") {
 			if (args.length > 1) {
 				broadcast("\u00A73[Server] \u00BB \u00A79" + args.slice(1).join(" "));

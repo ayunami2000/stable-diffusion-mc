@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Stable Diffusion MC</title>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<link rel="icon" type="image/png" href="latest"/>
+		<style>
+			* {
+				padding: 0;
+				margin: 0;
+				border: 0;
+				overflow: hidden;
+			}
+			body {
+				background-image: url("endsky");
+				background-size: 10vmax 10vmax;
+				background-color: rgba(0, 0, 0, 0.75);
+				background-blend-mode: multiply;
+				animation: scroll 10s linear infinite;
+				perspective: calc(var(--fard) * 2);
+				transform-style: preserve-3d;
+				perspective-origin: center center;
+				min-width: 100vw;
+				min-height: 100vh;
+			}
+			@keyframes scroll {
+				from {
+					background-position: 10vmax 10vmax;
+				}
+				to {
+					background-position: 0vmax 0vmax;
+				}
+			}
+			.title {
+				font-family: sans-serif;
+				color: white;
+				position: fixed;
+				top: 0;
+				left: 0;
+				right: 0;
+				width: 100%;
+				text-align: center;
+				font-weight: bold;
+				font-size: 2em;
+				line-height: 2em;
+			}
+			.title a:not(.link) {
+				color: white;
+				text-decoration: none;
+				font-weight: bold;
+			}
+			.link {
+				color: gray;
+				font-size: 0.75em;
+				transition: color 250ms;
+				text-decoration: none;
+				font-weight: bold;
+			}
+			.link:hover {
+				color: white;
+			}
+			.bigimgdl:hover + .handmap, .bigimgdl:hover + .handmap + .handmapimg {
+				bottom: -50vh;
+				filter: brightness(60%) blur(1px);
+			}
+			.handmapimg, .handmap {
+				transition: bottom 250ms, filter 250ms;
+				position: fixed;
+				bottom: calc(var(--fard) / -2);
+				left: calc(50vw - calc(var(--fard) / 2));
+				transform: scale(var(--jeez)) rotateX(45deg) translateY(calc(var(--fard) / -2));
+				transform-origin: center center;
+				width: var(--fard);
+				height: var(--fard);
+				display: block;
+				object-fit: contain;
+				image-rendering: pixelated;
+				filter: brightness(80%);
+			}
+			.handmap {
+				transform: scale(var(--jeez)) rotateX(45deg) translateY(calc(var(--fard) / -2)) scale(1.1);
+			}
+			.bigimg {
+				position: fixed;
+				top: 6.25vh;
+				left: calc(50vw - 37.5vh);
+				width: 75vh;
+				height: 75vh;
+				object-fit: contain;
+			}
+		</style>
+	</head>
+	<body>
+		<span class="title">
+			<a class="link" href="https://github.com/ayunami2000/stable-diffusion-mc#credits" target="_blank">Credits</a>
+			<a href="https://github.com/ayunami2000/stable-diffusion-mc" target="_blank">Stable Diffusion MC</a>
+			<a class="link" href="songs" target="_blank">Songs</a>
+		</span>
+		<a class="bigimgdl" href="download"><img class="bigimg" src="mjpeg"/></a>
+		<img class="handmap" src="map_background.png"/>
+		<img class="handmapimg" src="mjpeg"/>
+		<script>
+			const fard = 256;
+			document.documentElement.style.setProperty("--fard", fard + "px");
+
+			const jeez = function() {
+				document.documentElement.style.setProperty("--jeez", document.documentElement.clientHeight / (fard * 2));
+			};
+			window.addEventListener("resize", jeez);
+			jeez();
+		</script>
+	</body>
+</html>

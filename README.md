@@ -12,3 +12,4 @@
 - json-multi-parse.js is modded from [json-multi-parse](https://github.com/tremby/json-multi-parse)
 - colors.json is modded from [aresrpg-map-colors](https://github.com/aresrpg/aresrpg-map-colors/blob/master/src/colors.js)
 - musicMaps.js is modded from [SongPlayer](https://github.com/hhhzzzsss/SongPlayer/blob/master/src/main/java/com/github/hhhzzzsss/songplayer/song/MidiConverter.java)
+- map_background.png from [ClassicFaithful 32x-Jappa](https://faithfulpack.net)

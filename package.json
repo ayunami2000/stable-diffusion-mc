@@ -5,6 +5,7 @@
     "discord.js": "^14.7.1",
     "image-q": "^4.0.0",
     "midi-player-js": "^2.0.16",
+    "mime-types": "^2.1.35",
     "minecraft-protocol": "^1.40.3",
     "sharp": "^0.31.3",
     "uuid": "^9.0.0"
