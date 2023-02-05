@@ -664,6 +664,9 @@ wss.on("connection", async (ws, req) => {
 			if (ws.onChatMessage) ws.onChatMessage({ message: msg });
 		}
 	});
+	ws.on("error", () => {
+		ws.close();
+	});
 	ws.on("close", () => {
 		if (ws.onEnd) ws.onEnd();
 	});
