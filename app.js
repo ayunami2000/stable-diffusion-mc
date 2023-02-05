@@ -651,7 +651,6 @@ const wss = new WebSocketServer({
 
 wss.on("connection", async (ws, req) => {
 	if (settings.forwardIp) {
-		console.log(req.headers);
 		ws.fakeSocket = {
 			remoteAddress: req.headers["x-forwarded-for"]
 		};
