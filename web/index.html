@@ -209,7 +209,13 @@
 			function loadSound(url) {
 				return fetch(url).then(r => r.arrayBuffer()).then(b => audioContext.decodeAudioData(b));
 			}
+			let interacted = false;
+			window.onclick = function() {
+				window.onclick = function() {};
+				interacted = true;
+			};
 			function playSound(sound, volume, pitch, panning) {
+				if (!interacted) return;
 				const source = audioContext.createBufferSource();
 				const gainNode = audioContext.createGain();
 				const panNode = audioContext.createStereoPanner();
