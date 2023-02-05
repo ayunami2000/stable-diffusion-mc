@@ -651,6 +651,7 @@ const wss = new WebSocketServer({
 
 wss.on("connection", async ws => {
 	ws.on("message", msg => {
+		if (!msg || msg.length > 2048) return;
 		msg = ("" + msg).trim();
 		if (msg.startsWith("/")) {
 			if (ws.onChatCommand) ws.onChatCommand({ command: msg.slice(1) });
