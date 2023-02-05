@@ -649,7 +649,13 @@ const wss = new WebSocketServer({
 	clientTracking: true
 });
 
-wss.on("connection", async ws => {
+wss.on("connection", async (ws, req) => {
+	if (settings.forwardIp) {
+		console.log(req.headers);
+		ws.fakeSocket = {
+			remoteAddress: req.headers["x-forwarded-for"]
+		};
+	}
 	ws.on("message", msg => {
 		if (!msg || msg.length > 2048) return;
 		msg = ("" + msg).trim();
@@ -676,7 +682,7 @@ async function fakeWebClient(ws) {
 	return {
 		version: 761,
 		username: ws.un,
-		socket: ws._socket,
+		socket: ws.fakeSocket || ws._socket,
 		state: "play",
 		end: function(msg) {
 			ws.close(1000, msg);
@@ -888,7 +894,7 @@ const onLogin = function(client) {
 		return;
 	}
 	clientPrefs[client.username] = JSON.parse(JSON.stringify(settings.defaultClientPrefs));
-	const addr = client.socket.remoteAddress + ":" + client.socket.remotePort;
+	const addr = client.socket.remoteAddress + (client.socket.remotePort ? ":" + client.socket.remotePort : "");
 	console.log(client.username + " connected", "(" + addr + ")");
 	broadcast("\u00A7a\u00BB \u00A79" + client.username, client);
 

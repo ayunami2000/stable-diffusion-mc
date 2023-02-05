@@ -15,5 +15,6 @@
 	"defaultDither": "three-sierra",
 	"defaultSong": "dream run trance music for racing game",
 	"defaultSize": 0,
-	"blurIcon": true
+	"blurIcon": true,
+	"forwardIp": false
 }
